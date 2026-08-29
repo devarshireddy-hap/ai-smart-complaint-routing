@@ -13,11 +13,8 @@ Do not put passwords, API keys, or database credentials here.
 
 # Name of the text embedding model.
 # TBD = model will be selected after testing candidate models.
-EMBEDDING_MODEL_NAME = "TBD"
-
-# Number of dimensions in the generated embedding vector.
-# This depends on the selected embedding model.
-EMBEDDING_DIMENSION = None
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_DIMENSION = 384
 
 # Name of the model used for complaint classification.
 CLASSIFIER_MODEL_NAME = "TBD"
