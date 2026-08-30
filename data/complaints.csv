@@ -1,0 +1,11 @@
+complaint_id,complaint_text,department,category,priority,resolution
+1,"The Wi-Fi is not working in the computer lab","Technical","Network/Internet","HIGH","Check the network connection and restore lab connectivity."
+2,"The projector in Room 204 is not functioning","Technical","Equipment","MEDIUM","Inspect the projector and repair or replace the faulty component."
+3,"My semester fee payment has not been reflected in the portal","Finance","Payment Issue","HIGH","Verify the payment transaction and update the student account."
+4,"I have not received my eligible scholarship amount","Finance","Scholarship/Financial Aid","HIGH","Verify scholarship eligibility and payment status."
+5,"The lights in the corridor are not working","Electrical","Lighting","MEDIUM","Inspect the corridor lighting and replace faulty components."
+6,"There is a power outage on the second floor","Electrical","Power Outage","HIGH","Inspect the electrical supply and restore power."
+7,"Water is leaking from the pipe near Block B","Plumbing","Water Leakage","HIGH","Inspect and repair the leaking pipeline."
+8,"The washroom tap on the second floor is broken","Plumbing","Washroom Plumbing","MEDIUM","Repair or replace the damaged tap."
+9,"An unknown person entered the restricted laboratory area","Security","Unauthorized Access","URGENT","Verify access records and review security footage."
+10,"A suspicious person was seen near the staff entrance","Security","Suspicious Activity","HIGH","Verify the incident and alert the security team."
