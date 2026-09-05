@@ -1,180 +1,315 @@
+"""
+RAG retriever.
+
+Retrieves three types of project-specific information:
+
+1. Similar historical complaints
+2. Historical complaint resolutions
+3. Department-specific knowledge-base documents
+
+Semantic similarity is used. No keyword matching.
+"""
+
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Optional, List, Dict, Any
 
 import numpy as np
+import pandas as pd
 
-from ai.embeddings.embedding_model import load_embedding_model
-
-
-TOP_K = 3
-
-KNOWLEDGE_BASE_DIR = Path("data/knowledge_base")
+from ai.embeddings.embedding_generator import generate_embedding
 
 
-def cosine_similarity(vector_a, vector_b) -> float:
-    """Calculate cosine similarity between two vectors."""
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
-    a = np.asarray(vector_a, dtype=float)
-    b = np.asarray(vector_b, dtype=float)
+TOP_K = 5
 
-    denominator = np.linalg.norm(a) * np.linalg.norm(b)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-    if denominator == 0:
-        return 0.0
+DATA_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "complaints.csv"
+)
 
-    return float(np.dot(a, b) / denominator)
+KNOWLEDGE_BASE_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "knowledge_base"
+)
 
 
-def load_documents(
-    department: Optional[str] = None,
-) -> List[Dict]:
+# ============================================================
+# DATASET
+# ============================================================
+
+def load_historical_complaints() -> pd.DataFrame:
     """
-    Load knowledge-base documents.
-
-    If a department is supplied, only that department's
-    knowledge document is loaded.
+    Load historical complaints from the project dataset.
     """
 
-    if not KNOWLEDGE_BASE_DIR.exists():
-        raise FileNotFoundError(
-            f"Knowledge base not found: {KNOWLEDGE_BASE_DIR}"
+    df = pd.read_csv(DATA_PATH)
+
+    required_columns = [
+        "complaint_id",
+        "complaint_text",
+        "department",
+        "category",
+        "priority",
+        "resolution",
+    ]
+
+    missing_columns = [
+        column
+        for column in required_columns
+        if column not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns: {missing_columns}"
         )
+
+    return df
+
+
+# ============================================================
+# KNOWLEDGE BASE
+# ============================================================
+
+def load_knowledge_documents(
+    department: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Load department-specific knowledge-base documents.
+    """
 
     documents = []
 
     if department:
-        department_file = (
-            KNOWLEDGE_BASE_DIR
-            / f"{department.lower()}.txt"
+        departments = [department]
+    else:
+        departments = [
+            "Technical",
+            "Finance",
+            "Electrical",
+            "Plumbing",
+            "Security",
+        ]
+
+    for department_name in departments:
+
+        file_path = (
+            KNOWLEDGE_BASE_PATH
+            / f"{department_name.lower()}.txt"
         )
 
-        if not department_file.exists():
-            raise FileNotFoundError(
-                f"Knowledge document not found for "
-                f"department '{department}': "
-                f"{department_file}"
-            )
+        if not file_path.exists():
+            continue
 
-        text = department_file.read_text(
+        text = file_path.read_text(
             encoding="utf-8"
         ).strip()
 
-        if text:
-            documents.append(
-                {
-                    "source": department_file.name,
-                    "department": department,
-                    "text": text,
-                }
-            )
+        if not text:
+            continue
 
-    else:
-        for file_path in KNOWLEDGE_BASE_DIR.glob("*.txt"):
-
-            text = file_path.read_text(
-                encoding="utf-8"
-            ).strip()
-
-            if text:
-                documents.append(
-                    {
-                        "source": file_path.name,
-                        "department": file_path.stem.title(),
-                        "text": text,
-                    }
-                )
-
-    if not documents:
-        raise ValueError(
-            "No knowledge-base documents were found."
+        documents.append(
+            {
+                "source": file_path.name,
+                "department": department_name,
+                "text": text,
+            }
         )
 
     return documents
 
 
-def retrieve_relevant_documents(
+# ============================================================
+# HISTORICAL COMPLAINT RETRIEVAL
+# ============================================================
+
+def retrieve_similar_complaints(
     complaint: str,
-    top_k: int = TOP_K,
     department: Optional[str] = None,
-) -> List[Dict]:
+    top_k: int = TOP_K,
+) -> List[Dict[str, Any]]:
     """
-    Retrieve the most semantically relevant knowledge documents.
+    Retrieve semantically similar historical complaints.
 
-    Args:
-        complaint:
-            New complaint text.
-
-        top_k:
-            Number of documents to return.
-
-        department:
-            Optional predicted department. If supplied,
-            retrieval is restricted to that department.
-
-    Returns:
-        Ranked list of relevant documents.
+    When a department is supplied, only complaints from
+    that department are considered.
     """
 
-    if not isinstance(complaint, str):
-        raise ValueError(
-            "complaint must be a string."
-        )
+    df = load_historical_complaints()
 
-    if not complaint.strip():
-        raise ValueError(
-            "complaint must be a non-empty string."
-        )
+    if department:
+        df = df[
+            df["department"].str.upper()
+            == department.upper()
+        ]
 
-    documents = load_documents(
-        department=department
+    if df.empty:
+        return []
+
+    texts = (
+        df["complaint_text"]
+        .astype(str)
+        .tolist()
     )
 
-    model = load_embedding_model()
-
-    # Embed the complaint
-    complaint_embedding = model.encode(
-        complaint,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
+    historical_embeddings = np.array(
+        [
+            generate_embedding(text)
+            for text in texts
+        ]
     )
 
-    # Embed knowledge documents
-    document_texts = [
-        document["text"]
-        for document in documents
-    ]
-
-    document_embeddings = model.encode(
-        document_texts,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
+    query_embedding = np.array(
+        generate_embedding(complaint)
     )
+
+    similarities = (
+        historical_embeddings @ query_embedding
+    )
+
+    top_k = min(top_k, len(df))
+
+    top_indices = np.argsort(
+        similarities
+    )[-top_k:][::-1]
 
     results = []
 
-    for index, document in enumerate(documents):
+    for index in top_indices:
 
-        similarity = cosine_similarity(
-            complaint_embedding,
-            document_embeddings[index],
-        )
+        row = df.iloc[index]
 
         results.append(
             {
-                "source": document["source"],
-                "department": document["department"],
-                "similarity": similarity,
-                "text": document["text"],
+                "complaint_id": int(
+                    row["complaint_id"]
+                ),
+                "complaint_text": str(
+                    row["complaint_text"]
+                ),
+                "department": str(
+                    row["department"]
+                ),
+                "category": str(
+                    row["category"]
+                ),
+                "priority": str(
+                    row["priority"]
+                ),
+                "resolution": str(
+                    row["resolution"]
+                ),
+                "similarity": float(
+                    similarities[index]
+                ),
             }
         )
 
-    results.sort(
+    return results
+
+
+# ============================================================
+# KNOWLEDGE DOCUMENT RETRIEVAL
+# ============================================================
+
+def retrieve_knowledge_documents(
+    complaint: str,
+    department: Optional[str] = None,
+    top_k: int = TOP_K,
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve department-specific knowledge documents
+    using semantic similarity.
+    """
+
+    documents = load_knowledge_documents(
+        department=department
+    )
+
+    if not documents:
+        return []
+
+    query_embedding = np.array(
+        generate_embedding(complaint)
+    )
+
+    document_results = []
+
+    for document in documents:
+
+        document_embedding = np.array(
+            generate_embedding(
+                document["text"]
+            )
+        )
+
+        similarity = float(
+            document_embedding
+            @ query_embedding
+        )
+
+        document_results.append(
+            {
+                "source": document["source"],
+                "department": document["department"],
+                "text": document["text"],
+                "similarity": similarity,
+            }
+        )
+
+    document_results.sort(
         key=lambda item: item["similarity"],
         reverse=True,
     )
 
-    return results[:top_k]
+    return document_results[:top_k]
 
+
+# ============================================================
+# COMPLETE RAG RETRIEVAL
+# ============================================================
+
+def retrieve_rag_information(
+    complaint: str,
+    department: Optional[str] = None,
+    top_k: int = TOP_K,
+) -> Dict[str, Any]:
+    """
+    Retrieve all project-specific RAG information.
+    """
+
+    similar_complaints = (
+        retrieve_similar_complaints(
+            complaint=complaint,
+            department=department,
+            top_k=top_k,
+        )
+    )
+
+    knowledge_documents = (
+        retrieve_knowledge_documents(
+            complaint=complaint,
+            department=department,
+            top_k=top_k,
+        )
+    )
+
+    return {
+        "similar_complaints": similar_complaints,
+        "knowledge_documents": knowledge_documents,
+    }
+
+
+# ============================================================
+# TEST
+# ============================================================
 
 if __name__ == "__main__":
 
@@ -183,35 +318,67 @@ if __name__ == "__main__":
         "behind the hostel building."
     )
 
-    predicted_department = "Plumbing"
+    print("=" * 70)
+    print("RAG RETRIEVAL TEST")
+    print("=" * 70)
 
-    print("\nNew complaint:")
-    print(complaint)
-
-    print(
-        f"\nPredicted department: "
-        f"{predicted_department}"
-    )
-
-    results = retrieve_relevant_documents(
+    result = retrieve_rag_information(
         complaint=complaint,
-        department=predicted_department,
+        department="Plumbing",
+        top_k=5,
     )
 
-    print("\nRetrieved RAG documents:")
+    print("\nSIMILAR HISTORICAL COMPLAINTS")
 
-    for result in results:
+    for item in result[
+        "similar_complaints"
+    ]:
 
-        print("\n------------------------------")
         print(
-            f"Source: {result['source']}"
+            f"\nID: {item['complaint_id']}"
         )
+
         print(
-            f"Department: {result['department']}"
+            f"Complaint: "
+            f"{item['complaint_text']}"
         )
+
+        print(
+            f"Category: "
+            f"{item['category']}"
+        )
+
+        print(
+            f"Priority: "
+            f"{item['priority']}"
+        )
+
         print(
             f"Similarity: "
-            f"{result['similarity']:.4f}"
+            f"{item['similarity']:.4f}"
         )
-        print("------------------------------")
-        print(result["text"])
+
+        print(
+            f"Resolution: "
+            f"{item['resolution']}"
+        )
+
+    print("\nKNOWLEDGE DOCUMENTS")
+
+    for document in result[
+        "knowledge_documents"
+    ]:
+
+        print(
+            f"\nSource: "
+            f"{document['source']}"
+        )
+
+        print(
+            f"Similarity: "
+            f"{document['similarity']:.4f}"
+        )
+
+        print(
+            document["text"]
+        )

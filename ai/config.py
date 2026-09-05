@@ -1,87 +1,20 @@
-"""
-Global configuration for the AI Smart Complaint Routing System.
-
-This file contains shared AI, RAG, retrieval, duplicate-detection,
-and evaluation settings.
-
-Do not put passwords, API keys, or database credentials here.
-"""
-
 # ============================================================
-# AI MODEL CONFIGURATION
+# API CONFIGURATION
 # ============================================================
 
-# Name of the text embedding model.
-# TBD = model will be selected after testing candidate models.
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-EMBEDDING_DIMENSION = 384
-
-# Name of the model used for complaint classification.
-CLASSIFIER_MODEL_NAME = "TBD"
-
-# Name of the LLM used for RAG-generated responses.
-LLM_MODEL_NAME = "TBD"
-
-# Version of our AI pipeline.
-MODEL_VERSION = "v1.0"
+API_PREFIX = "/api/v1"
+API_VERSION = "v1"
+API_CONTENT_TYPE = "application/json"
+API_PROTOCOL = "HTTPS"
 
 
 # ============================================================
-# VECTOR SEARCH CONFIGURATION
+# PAGINATION CONFIGURATION
 # ============================================================
 
-# Number of similar records retrieved for RAG.
-RAG_TOP_K = 5
-
-# Number of similar complaints checked for possible duplicates.
-DUPLICATE_TOP_K = 5
-
-# Similarity metric used for semantic vector comparison.
-SIMILARITY_METRIC = "cosine"
-
-# Threshold for duplicate detection.
-# Keep this as None until we experimentally determine the value.
-DUPLICATE_SIMILARITY_THRESHOLD = None
-
-
-# ============================================================
-# AI FEATURE FLAGS
-# ============================================================
-
-# Enable/disable AI-based complaint routing.
-ENABLE_AI_ROUTING = True
-
-# Enable/disable semantic duplicate detection.
-ENABLE_DUPLICATE_DETECTION = True
-
-# Enable/disable Retrieval-Augmented Generation.
-ENABLE_RAG = True
-
-# Enable/disable human feedback on AI predictions.
-ENABLE_AI_FEEDBACK = True
-
-
-# ============================================================
-# COMPLAINT PRIORITY LEVELS
-# ============================================================
-
-PRIORITY_LOW = "LOW"
-PRIORITY_MEDIUM = "MEDIUM"
-PRIORITY_HIGH = "HIGH"
-PRIORITY_URGENT = "URGENT"
-
-
-# ============================================================
-# OPTIONAL SEVERITY LEVELS
-# ============================================================
-
-# Keep these only if the team confirms severity is part
-# of the final project scope.
-
-SEVERITY_LOW = "LOW"
-SEVERITY_MEDIUM = "MEDIUM"
-SEVERITY_HIGH = "HIGH"
-SEVERITY_CRITICAL = "CRITICAL"
+DEFAULT_PAGE = 1
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
 
 
 # ============================================================
@@ -92,6 +25,17 @@ ROLE_STUDENT = "STUDENT"
 ROLE_FACULTY = "FACULTY"
 ROLE_WORKING_STAFF = "WORKING_STAFF"
 ROLE_ADMIN = "ADMIN"
+
+
+# ============================================================
+# COMPLAINT DEPARTMENTS
+# ============================================================
+
+DEPARTMENT_TECHNICAL = "TECHNICAL"
+DEPARTMENT_FINANCE = "FINANCE"
+DEPARTMENT_ELECTRICAL = "ELECTRICAL"
+DEPARTMENT_PLUMBING = "PLUMBING"
+DEPARTMENT_SECURITY = "SECURITY"
 
 
 # ============================================================
@@ -108,28 +52,75 @@ STATUS_REOPENED = "REOPENED"
 
 
 # ============================================================
+# COMPLAINT PRIORITY LEVELS
+# ============================================================
+
+PRIORITY_LOW = "LOW"
+PRIORITY_MEDIUM = "MEDIUM"
+PRIORITY_HIGH = "HIGH"
+PRIORITY_URGENT = "URGENT"
+
+
+# ============================================================
+# AI MODEL CONFIGURATION
+# ============================================================
+
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+
+EMBEDDING_DIMENSION = 384
+
+CLASSIFIER_MODEL_NAME = "TBD"
+
+LLM_MODEL_NAME = "TBD"
+
+MODEL_VERSION = "v1.0"
+
+RANDOM_SEED = 42
+
+
+# ============================================================
+# VECTOR SEARCH CONFIGURATION
+# ============================================================
+
+VECTOR_EXTENSION = "pgvector"
+
+SIMILARITY_METRIC = "cosine"
+
+RAG_TOP_K = 5
+
+DUPLICATE_TOP_K = 5
+
+DUPLICATE_SIMILARITY_THRESHOLD = None
+
+# ============================================================
+# AI FEATURE FLAGS
+# ============================================================
+
+ENABLE_AI_ROUTING = True
+ENABLE_DUPLICATE_DETECTION = True
+ENABLE_RAG = True
+ENABLE_AI_FEEDBACK = True
+ENABLE_AI_EXPLANATION = True
+
+
+# ============================================================
 # EXPERIMENT / EVALUATION CONFIGURATION
 # ============================================================
 
-# Random seed used for reproducible experiments.
-RANDOM_SEED = 42
-
-# Dataset split ratios.
 TRAIN_RATIO = 0.70
 VALIDATION_RATIO = 0.15
 TEST_RATIO = 0.15
 
-# Traditional baseline for comparison.
 BASELINE_METHOD = "TF-IDF + Logistic Regression"
 
-# Our final proposed semantic approach.
 PROPOSED_METHOD = "TBD"
 
 
 # ============================================================
-# PAGINATION CONFIGURATION
+# OPTIONAL SEVERITY LEVELS
 # ============================================================
 
-DEFAULT_PAGE = 1
-DEFAULT_PAGE_SIZE = 20
-MAX_PAGE_SIZE = 100
+SEVERITY_LOW = "LOW"
+SEVERITY_MEDIUM = "MEDIUM"
+SEVERITY_HIGH = "HIGH"
+SEVERITY_CRITICAL = "CRITICAL"
