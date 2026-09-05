@@ -305,13 +305,81 @@ def print_result(result: Dict[str, Any]) -> None:
 
 if __name__ == "__main__":
 
-    test_complaint = (
-        "There is a serious water pipe leak "
-        "behind the hostel building."
-    )
+    test_complaints = [
+        (
+            "Technical",
+            "The internet connection in the computer laboratory "
+            "is not working."
+        ),
+        (
+            "Finance",
+            "I was charged the wrong amount for my semester fee."
+        ),
+        (
+            "Electrical",
+            "The power has completely failed in the laboratory."
+        ),
+        (
+            "Plumbing",
+            "There is a serious water pipe leak "
+            "behind the hostel building."
+        ),
+        (
+            "Security",
+            "Someone entered the hostel area "
+            "without authorization."
+        ),
+    ]
 
-    result = run_complete_ai_pipeline(
-        complaint=test_complaint,
-    )
+    for expected_department, complaint in test_complaints:
 
-    print_result(result)
+        print("\n\n" + "#" * 70)
+        print(
+            f"EXPECTED DEPARTMENT: "
+            f"{expected_department}"
+        )
+        print("#" * 70)
+
+        print("\nComplaint:")
+        print(complaint)
+
+        result = run_complete_ai_pipeline(
+            complaint=complaint,
+        )
+
+        print("\nPredicted Department:")
+        print(
+            result["prediction"]["department"]
+        )
+
+        print("\nPredicted Priority:")
+        print(
+            result["prediction"]["priority"]
+        )
+
+        print("\nPriority Confidence:")
+        print(
+            f"{result['prediction']['priority_confidence']:.2f}"
+        )
+
+        print("\nDuplicate Detection:")
+        print(
+            result["duplicate_detection"]["is_duplicate"]
+        )
+
+        print("\nRAG Sources:")
+
+        for source in result["rag"]["sources"]:
+            print(
+                f"- {source['source']} "
+                f"(similarity="
+                f"{source['similarity']:.4f})"
+            )
+
+        print("\nSuggested Resolution:")
+        print(
+            result["rag"]["suggested_resolution"]
+        )
+
+        print("\nStatus:")
+        print(result["status"])
