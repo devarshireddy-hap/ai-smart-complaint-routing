@@ -1,12 +1,32 @@
 """
 Prompt builder for AI-generated complaint resolution.
 
-This module prepares the RAG context for an LLM.
+The prompt template is stored in resolution_prompt.txt.
 
-No external API is called here yet.
+This module loads the template and fills in the dynamic
+complaint, prediction, and RAG context values.
 """
 
-from typing import Dict
+from pathlib import Path
+
+
+PROMPT_FILE = (
+    Path(__file__).resolve().parent
+    / "resolution_prompt.txt"
+)
+
+
+def load_resolution_prompt_template() -> str:
+    """Load the resolution prompt template from the text file."""
+
+    if not PROMPT_FILE.exists():
+        raise FileNotFoundError(
+            f"Prompt file not found: {PROMPT_FILE}"
+        )
+
+    return PROMPT_FILE.read_text(
+        encoding="utf-8"
+    ).strip()
 
 
 def build_resolution_prompt(
@@ -17,51 +37,28 @@ def build_resolution_prompt(
     retrieved_context: str,
 ) -> str:
     """
-    Build the prompt that will later be sent to an LLM.
+    Build the final prompt using the documented
+    resolution_prompt.txt template.
     """
 
-    if not complaint.strip():
+    if not isinstance(
+        complaint,
+        str,
+    ) or not complaint.strip():
+
         raise ValueError(
             "complaint must be a non-empty string."
         )
 
-    prompt = f"""
-You are an AI assistant for a college complaint
-routing and resolution system.
+    template = load_resolution_prompt_template()
 
-Your task is to suggest a practical resolution for the
-complaint using ONLY the retrieved project information.
-
-Complaint:
-{complaint}
-
-Predicted Department:
-{department}
-
-Predicted Category:
-{category}
-
-Predicted Priority:
-{priority}
-
-Retrieved Project Context:
-{retrieved_context}
-
-Instructions:
-1. Use the retrieved historical complaints and their
-   resolutions as supporting examples.
-2. Use the knowledge-base information as procedural guidance.
-3. Do not invent facts that are not supported by the context.
-4. Give a concise, actionable suggested resolution.
-5. Mention escalation when the retrieved information
-   indicates that escalation is necessary.
-6. Do not change the predicted department, category,
-   or priority.
-
-Return only the suggested resolution.
-""".strip()
-
-    return prompt
+    return template.format(
+        complaint=complaint,
+        department=department,
+        category=category,
+        priority=priority,
+        retrieved_context=retrieved_context,
+    )
 
 
 if __name__ == "__main__":
@@ -81,7 +78,7 @@ KNOWLEDGE BASE:
 Severe leakage:
 Notify the plumbing maintenance team immediately
 and restrict the affected area if necessary.
-"""
+""".strip()
 
     prompt = build_resolution_prompt(
         complaint=complaint,
@@ -95,4 +92,3 @@ and restrict the affected area if necessary.
     print("LLM RESOLUTION PROMPT")
     print("=" * 70)
     print(prompt)
-    
