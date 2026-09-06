@@ -16,7 +16,7 @@ from typing import Dict, Any, Tuple
 
 from sklearn.model_selection import train_test_split
 
-from ai.routing.semantic_department_classifier import (
+from ai.routing.department_predictor import (
     load_dataset,
     create_embeddings,
     predict_department,
@@ -27,7 +27,7 @@ from ai.routing.category_predictor import (
     predict_category,
 )
 
-from ai.routing.semantic_priority_classifier import (
+from ai.routing.priority_predictor import (
     train_and_evaluate as train_priority_model,
     predict_priority,
 )
