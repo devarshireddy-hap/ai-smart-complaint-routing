@@ -8,8 +8,8 @@ Complaint
     -> Priority prediction
     -> Duplicate detection
     -> Department-filtered RAG
-    -> Suggested resolution
-    -> Final AI response
+    -> Gemini AI response
+    -> Final structured response
 """
 
 from typing import Dict, Any, Tuple
@@ -105,9 +105,9 @@ def prepare_category_model_for_pipeline():
     """
     Prepare the category model once.
 
-    Category prediction uses the full dataset as the
-    semantic candidate pool and filters candidates by
-    predicted department during prediction.
+    Category prediction uses the full dataset as the semantic
+    candidate pool and filters candidates using the predicted
+    department during prediction.
     """
 
     df = load_dataset()
@@ -277,19 +277,22 @@ def run_complete_ai_pipeline(
     )
 
     # ========================================================
-    # 9. AI response
+    # 9. Gemini AI response
     # ========================================================
 
     rag_response = build_ai_response(
         complaint=complaint,
+        department=department,
+        category=category,
+        priority=priority,
+        retrieved_context=(
+            rag_result["retrieved_context"]
+        ),
         similar_complaints=(
             rag_result["similar_complaints"]
         ),
         knowledge_documents=(
             rag_result["knowledge_documents"]
-        ),
-        retrieved_context=(
-            rag_result["retrieved_context"]
         ),
         sources=(
             rag_result["sources"]
@@ -333,18 +336,26 @@ def run_complete_ai_pipeline(
 
         "priority_neighbours": priority_neighbours,
 
-                "rag": {
+        "rag": {
             "similar_complaints": (
-                rag_response["similar_complaints"]
+                rag_response[
+                    "similar_complaints"
+                ]
             ),
             "knowledge_documents": (
-                rag_response["knowledge_documents"]
+                rag_response[
+                    "knowledge_documents"
+                ]
             ),
             "retrieved_context": (
-                rag_response["retrieved_context"]
+                rag_response[
+                    "retrieved_context"
+                ]
             ),
             "suggested_resolution": (
-                rag_response["suggested_resolution"]
+                rag_response[
+                    "suggested_resolution"
+                ]
             ),
             "sources": (
                 rag_response["sources"]
@@ -467,7 +478,9 @@ def print_result(
 
     print("\nSimilar Historical Complaints:")
 
-    for complaint in result["rag"]["similar_complaints"]:
+    for complaint in result[
+        "rag"
+    ]["similar_complaints"]:
 
         print(
             f"- ID={complaint['complaint_id']} | "
@@ -478,7 +491,9 @@ def print_result(
 
     print("\nKnowledge Documents:")
 
-    for document in result["rag"]["knowledge_documents"]:
+    for document in result[
+        "rag"
+    ]["knowledge_documents"]:
 
         print(
             f"- {document['source']} | "
@@ -488,7 +503,9 @@ def print_result(
 
     print("\nRAG Sources:")
 
-    for source in result["rag"]["sources"]:
+    for source in result[
+        "rag"
+    ]["sources"]:
 
         print(
             f"- {source['type']} | "
@@ -497,7 +514,7 @@ def print_result(
             f"{source['similarity']:.4f}"
         )
 
-    print("\nSuggested Resolution:")
+    print("\nAI-Generated Suggested Resolution:")
     print(
         result["rag"]["suggested_resolution"]
     )
