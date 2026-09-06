@@ -11,18 +11,19 @@ For the current 50-row dataset:
     Validation = 8 rows  (16%)
     Testing    = 7 rows  (14%)
 
-The small difference from exact 15% is unavoidable because the
-dataset contains 50 whole rows.
-
 Models evaluated:
     1. Department prediction
     2. Category prediction
     3. Priority prediction
 
-The evaluation uses semantic embeddings and nearest-neighbour
-prediction, matching the current AI prototype.
+Evaluation method:
+    Semantic embeddings + cosine similarity +
+    nearest-neighbour majority voting.
 
-The test set is never used when building the training pool.
+The test set is never used when building the training pool
+or selecting the best k value.
+
+No keyword or string matching is used.
 """
 
 from pathlib import Path
@@ -37,7 +38,9 @@ from sklearn.metrics import (
     classification_report,
 )
 
-from ai.embeddings.embedding_generator import generate_embedding
+from ai.embeddings.embedding_generator import (
+    generate_embedding,
+)
 
 
 # ============================================================
@@ -64,9 +67,12 @@ DATA_PATH = (
 # ============================================================
 
 def load_dataset() -> pd.DataFrame:
-    """
-    Load and validate the complaint dataset.
-    """
+    """Load and validate the complaint dataset."""
+
+    if not DATA_PATH.exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {DATA_PATH}"
+        )
 
     df = pd.read_csv(DATA_PATH)
 
@@ -91,9 +97,20 @@ def load_dataset() -> pd.DataFrame:
         )
 
     if df.empty:
-        raise ValueError("The complaint dataset is empty.")
+        raise ValueError(
+            "The complaint dataset is empty."
+        )
 
-    return df.reset_index(drop=True)
+    df = df.dropna(
+        subset=[
+            "complaint_text",
+            "department",
+            "category",
+            "priority",
+        ]
+    ).reset_index(drop=True)
+
+    return df
 
 
 # ============================================================
@@ -107,35 +124,38 @@ def create_embeddings(
     Generate normalized sentence embeddings.
     """
 
-    return np.array(
-        [
-            generate_embedding(str(text))
-            for text in texts
-        ]
+    embeddings = [
+        generate_embedding(str(text))
+        for text in texts
+    ]
+
+    return np.asarray(
+        embeddings,
+        dtype=np.float32,
     )
 
 
 # ============================================================
-# SPLIT DATA
+# DATA SPLITTING
 # ============================================================
 
 def create_data_splits(
     df: pd.DataFrame,
 ):
     """
-    Create the training, validation, and test sets.
+    Create train, validation, and test datasets.
 
     For the current 50-row dataset:
-        Training   = 35 rows
-        Validation = 8 rows
-        Testing    = 7 rows
+        Training   = 35
+        Validation = 8
+        Testing    = 7
 
-    Department is used for stratification so that the five
-    departments remain represented across the evaluation sets.
+    This is the closest whole-number representation of
+    the required 70/15/15 split.
     """
 
     # --------------------------------------------------------
-    # Training set
+    # Training = 35 rows
     # --------------------------------------------------------
 
     train_df, temporary_df = train_test_split(
@@ -146,16 +166,8 @@ def create_data_splits(
     )
 
     # --------------------------------------------------------
-    # Validation and test sets
-    # --------------------------------------------------------
-    # Remaining rows = 15
-    #
     # Validation = 8 rows
-    # Test       = 7 rows
-    #
-    # 8/50 = 16%
-    # 7/50 = 14%
-    # Together = 30%
+    # Test = 7 rows
     # --------------------------------------------------------
 
     validation_df, test_df = train_test_split(
@@ -184,14 +196,15 @@ def predict_label(
     k: int,
 ):
     """
-    Predict a label using cosine similarity.
+    Predict a label using semantic nearest neighbours.
 
-    The embeddings are normalized, so the dot product is
-    equivalent to cosine similarity.
+    Embeddings are normalized, therefore their dot product
+    is equivalent to cosine similarity.
     """
 
-    query_embedding = np.array(
-        generate_embedding(complaint)
+    query_embedding = np.asarray(
+        generate_embedding(complaint),
+        dtype=np.float32,
     )
 
     similarities = (
@@ -220,6 +233,10 @@ def predict_label(
             vote_counts.get(label, 0) + 1
         )
 
+    # --------------------------------------------------------
+    # Majority vote
+    # --------------------------------------------------------
+
     predicted_label = max(
         vote_counts,
         key=vote_counts.get,
@@ -237,9 +254,8 @@ def calculate_metrics(
     y_pred,
 ):
     """
-    Calculate standard classification metrics.
-
-    Macro averaging is used so every class contributes equally.
+    Calculate accuracy, macro precision, macro recall,
+    and macro F1.
     """
 
     accuracy = accuracy_score(
@@ -270,11 +286,11 @@ def calculate_metrics(
 
 def evaluate_department(
     train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
+    evaluation_df: pd.DataFrame,
     k: int,
 ):
     """
-    Evaluate department prediction.
+    Evaluate semantic department prediction.
     """
 
     training_embeddings = create_embeddings(
@@ -282,15 +298,17 @@ def evaluate_department(
     )
 
     training_labels = (
-        train_df["department"].tolist()
+        train_df["department"]
+        .astype(str)
+        .tolist()
     )
 
     predictions = []
 
-    for complaint in test_df["complaint_text"]:
+    for complaint in evaluation_df["complaint_text"]:
 
         prediction = predict_label(
-            complaint=complaint,
+            complaint=str(complaint),
             training_embeddings=training_embeddings,
             training_labels=training_labels,
             k=k,
@@ -298,8 +316,14 @@ def evaluate_department(
 
         predictions.append(prediction)
 
+    actual = (
+        evaluation_df["department"]
+        .astype(str)
+        .tolist()
+    )
+
     metrics = calculate_metrics(
-        test_df["department"].tolist(),
+        actual,
         predictions,
     )
 
@@ -312,18 +336,17 @@ def evaluate_department(
 
 def evaluate_category(
     train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
+    evaluation_df: pd.DataFrame,
     k: int,
 ):
     """
-    Evaluate category prediction.
+    Evaluate semantic category prediction.
 
     Category candidates are restricted to the TRUE department
     during this isolated category evaluation.
 
-    This measures the category classifier itself rather than
-    combining department prediction errors with category
-    prediction errors.
+    This measures the category classifier independently rather
+    than combining department errors with category errors.
     """
 
     training_embeddings = create_embeddings(
@@ -333,20 +356,21 @@ def evaluate_category(
     predictions = []
     actual = []
 
-    for _, row in test_df.iterrows():
+    for _, row in evaluation_df.iterrows():
 
-        department = row["department"]
+        true_department = str(
+            row["department"]
+        )
 
         department_mask = (
             train_df["department"]
-            == department
+            .astype(str)
+            == true_department
         )
 
-        department_indices = (
-            np.where(
-                department_mask.to_numpy()
-            )[0]
-        )
+        department_indices = np.where(
+            department_mask.to_numpy()
+        )[0]
 
         if len(department_indices) == 0:
             continue
@@ -357,28 +381,38 @@ def evaluate_category(
             ]
         )
 
-        department_labels = (
+        department_categories = (
             train_df.iloc[
                 department_indices
-            ]["category"].tolist()
+            ]["category"]
+            .astype(str)
+            .tolist()
         )
 
         prediction = predict_label(
-            complaint=row["complaint_text"],
+            complaint=str(
+                row["complaint_text"]
+            ),
             training_embeddings=department_embeddings,
-            training_labels=department_labels,
+            training_labels=department_categories,
             k=k,
         )
 
         predictions.append(prediction)
-        actual.append(row["category"])
+        actual.append(
+            str(row["category"])
+        )
 
     metrics = calculate_metrics(
         actual,
         predictions,
     )
 
-    return metrics, predictions, actual
+    return (
+        metrics,
+        predictions,
+        actual,
+    )
 
 
 # ============================================================
@@ -387,11 +421,11 @@ def evaluate_category(
 
 def evaluate_priority(
     train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
+    evaluation_df: pd.DataFrame,
     k: int,
 ):
     """
-    Evaluate priority prediction.
+    Evaluate semantic priority prediction.
     """
 
     training_embeddings = create_embeddings(
@@ -399,15 +433,17 @@ def evaluate_priority(
     )
 
     training_labels = (
-        train_df["priority"].tolist()
+        train_df["priority"]
+        .astype(str)
+        .tolist()
     )
 
     predictions = []
 
-    for complaint in test_df["complaint_text"]:
+    for complaint in evaluation_df["complaint_text"]:
 
         prediction = predict_label(
-            complaint=complaint,
+            complaint=str(complaint),
             training_embeddings=training_embeddings,
             training_labels=training_labels,
             k=k,
@@ -415,8 +451,14 @@ def evaluate_priority(
 
         predictions.append(prediction)
 
+    actual = (
+        evaluation_df["priority"]
+        .astype(str)
+        .tolist()
+    )
+
     metrics = calculate_metrics(
-        test_df["priority"].tolist(),
+        actual,
         predictions,
     )
 
@@ -424,7 +466,7 @@ def evaluate_priority(
 
 
 # ============================================================
-# VALIDATION: CHOOSE BEST K
+# VALIDATION: SELECT BEST K
 # ============================================================
 
 def choose_best_k(
@@ -432,10 +474,8 @@ def choose_best_k(
     validation_df: pd.DataFrame,
 ):
     """
-    Select the best k value using the validation set.
-
-    Department, category, and priority are evaluated separately.
-    The test set is not used here.
+    Select the best k independently for department,
+    category, and priority using validation data only.
     """
 
     print("\n" + "=" * 70)
@@ -449,7 +489,7 @@ def choose_best_k(
     # --------------------------------------------------------
 
     best_department_k = None
-    best_department_score = -1
+    best_department_score = -1.0
 
     for k in TOP_K_VALUES:
 
@@ -465,7 +505,11 @@ def choose_best_k(
         )
 
         if metrics["f1"] > best_department_score:
-            best_department_score = metrics["f1"]
+
+            best_department_score = (
+                metrics["f1"]
+            )
+
             best_department_k = k
 
     # --------------------------------------------------------
@@ -473,7 +517,7 @@ def choose_best_k(
     # --------------------------------------------------------
 
     best_category_k = None
-    best_category_score = -1
+    best_category_score = -1.0
 
     for k in TOP_K_VALUES:
 
@@ -489,7 +533,11 @@ def choose_best_k(
         )
 
         if metrics["f1"] > best_category_score:
-            best_category_score = metrics["f1"]
+
+            best_category_score = (
+                metrics["f1"]
+            )
+
             best_category_k = k
 
     # --------------------------------------------------------
@@ -497,7 +545,7 @@ def choose_best_k(
     # --------------------------------------------------------
 
     best_priority_k = None
-    best_priority_score = -1
+    best_priority_score = -1.0
 
     for k in TOP_K_VALUES:
 
@@ -513,7 +561,11 @@ def choose_best_k(
         )
 
         if metrics["f1"] > best_priority_score:
-            best_priority_score = metrics["f1"]
+
+            best_priority_score = (
+                metrics["f1"]
+            )
+
             best_priority_k = k
 
     results["department"] = best_department_k
@@ -521,12 +573,15 @@ def choose_best_k(
     results["priority"] = best_priority_k
 
     print("\nSelected k values:")
+
     print(
         f"Department: {best_department_k}"
     )
+
     print(
         f"Category:   {best_category_k}"
     )
+
     print(
         f"Priority:   {best_priority_k}"
     )
@@ -551,7 +606,7 @@ def main():
     df = load_dataset()
 
     # --------------------------------------------------------
-    # Create train / validation / test split
+    # Create data splits
     # --------------------------------------------------------
 
     (
@@ -561,10 +616,11 @@ def main():
     ) = create_data_splits(df)
 
     # --------------------------------------------------------
-    # Print dataset split
+    # Print split information
     # --------------------------------------------------------
 
     print("\nDataset:")
+
     print(
         f"Total examples: {len(df)}"
     )
@@ -585,7 +641,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # Select best k using validation data
+    # Select k using validation set
     # --------------------------------------------------------
 
     best_k = choose_best_k(
@@ -594,7 +650,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # FINAL TEST EVALUATION
+    # FINAL TEST RESULTS
     # --------------------------------------------------------
 
     print("\n" + "=" * 70)
@@ -672,6 +728,11 @@ def main():
         f"{category_metrics['f1']:.4f}"
     )
 
+    print(
+        "\nNote: Category evaluation uses the TRUE department "
+        "to isolate category prediction performance."
+    )
+
     # ========================================================
     # PRIORITY
     # ========================================================
@@ -708,23 +769,39 @@ def main():
     )
 
     # ========================================================
-    # DETAILED PRIORITY REPORT
+    # CATEGORY CLASSIFICATION REPORT
     # ========================================================
 
     print("\n" + "=" * 70)
+    print("CATEGORY CLASSIFICATION REPORT")
+    print("=" * 70)
+
+    print(
+        classification_report(
+            category_actual,
+            category_predictions,
+            zero_division=0,
+        )
+    )
+
+    # ========================================================
+    # PRIORITY CLASSIFICATION REPORT
+    # ========================================================
+
+    print("=" * 70)
     print("PRIORITY CLASSIFICATION REPORT")
     print("=" * 70)
 
     print(
         classification_report(
-            test_df["priority"],
+            test_df["priority"].astype(str),
             priority_predictions,
             zero_division=0,
         )
     )
 
     # ========================================================
-    # DETAILED DEPARTMENT REPORT
+    # DEPARTMENT CLASSIFICATION REPORT
     # ========================================================
 
     print("=" * 70)
@@ -733,14 +810,14 @@ def main():
 
     print(
         classification_report(
-            test_df["department"],
+            test_df["department"].astype(str),
             department_predictions,
             zero_division=0,
         )
     )
 
     # ========================================================
-    # EVALUATION SUMMARY
+    # FINAL SUMMARY
     # ========================================================
 
     print("=" * 70)
@@ -748,29 +825,47 @@ def main():
     print("=" * 70)
 
     print(
-        f"Best Department k : {best_k['department']}"
+        f"Best Department k : "
+        f"{best_k['department']}"
     )
 
     print(
-        f"Best Category k   : {best_k['category']}"
+        f"Best Category k   : "
+        f"{best_k['category']}"
     )
 
     print(
-        f"Best Priority k   : {best_k['priority']}"
+        f"Best Priority k   : "
+        f"{best_k['priority']}"
     )
 
     print(
-        f"\nDepartment F1 : "
+        f"\nDepartment Accuracy : "
+        f"{department_metrics['accuracy']:.4f}"
+    )
+
+    print(
+        f"Department F1       : "
         f"{department_metrics['f1']:.4f}"
     )
 
     print(
-        f"Category F1   : "
+        f"\nCategory Accuracy   : "
+        f"{category_metrics['accuracy']:.4f}"
+    )
+
+    print(
+        f"Category F1         : "
         f"{category_metrics['f1']:.4f}"
     )
 
     print(
-        f"Priority F1   : "
+        f"\nPriority Accuracy   : "
+        f"{priority_metrics['accuracy']:.4f}"
+    )
+
+    print(
+        f"Priority F1         : "
         f"{priority_metrics['f1']:.4f}"
     )
 
