@@ -1,17 +1,20 @@
 """
 RAG response builder.
 
-This module:
-1. Receives retrieved RAG information.
-2. Builds a grounded prompt.
-3. Sends the prompt to Gemini.
-4. Returns the generated resolution together with
-   the retrieved evidence.
-
-The Gemini API key is loaded from .env.
+Flow:
+1. Receive retrieved RAG information.
+2. Build a grounded prompt.
+3. Try Gemini for AI-generated resolution.
+4. If Gemini is unavailable, use a local RAG-based fallback.
+5. Return the final structured response.
 """
 
 from typing import Dict, List, Optional
+
+from ai.config import (
+    ENABLE_LLM,
+    USE_LLM_FALLBACK,
+)
 
 from ai.prompts.resolution_prompt import (
     build_resolution_prompt,
@@ -28,9 +31,103 @@ from ai.llm.gemini_client import (
 
 RAG_MODEL_NAME = "gemini-3.8-flash"
 
+# Prevent repeated API calls after a quota/rate-limit failure
+LLM_AVAILABLE = True
+
 
 # ============================================================
-# AI RESPONSE
+# LOCAL FALLBACK
+# ============================================================
+
+def generate_fallback_resolution(
+    similar_complaints: List[Dict],
+    knowledge_documents: List[Dict],
+) -> str:
+    """
+    Generate a deterministic resolution without calling Gemini.
+
+    Uses the strongest historical resolution and relevant
+    knowledge-base guidance.
+    """
+
+    response_parts = []
+
+    # --------------------------------------------------------
+    # Historical resolution
+    # --------------------------------------------------------
+
+    if similar_complaints:
+
+        best_complaint = similar_complaints[0]
+
+        resolution = best_complaint.get(
+            "resolution",
+            "",
+        )
+
+        complaint_id = best_complaint.get(
+            "complaint_id",
+            "unknown",
+        )
+
+        similarity = float(
+            best_complaint.get(
+                "similarity",
+                0.0,
+            )
+        )
+
+        if resolution:
+
+            response_parts.append(
+                "Recommended approach based on "
+                f"historical complaint ID={complaint_id} "
+                f"(similarity={similarity:.4f}):\n"
+                f"{resolution}"
+            )
+
+    # --------------------------------------------------------
+    # Knowledge-base guidance
+    # --------------------------------------------------------
+
+    if knowledge_documents:
+
+        best_document = knowledge_documents[0]
+
+        source = best_document.get(
+            "source",
+            "knowledge base",
+        )
+
+        text = best_document.get(
+            "text",
+            "",
+        )
+
+        if text:
+
+            response_parts.append(
+                f"Relevant knowledge-base guidance "
+                f"from {source}:\n"
+                f"{text}"
+            )
+
+    # --------------------------------------------------------
+    # Nothing available
+    # --------------------------------------------------------
+
+    if not response_parts:
+
+        return (
+            "No relevant RAG information was available. "
+            "The complaint should be reviewed manually."
+        )
+
+    return "\n\n".join(response_parts)
+
+
+# ============================================================
+# SUGGESTED RESOLUTION
 # ============================================================
 
 def generate_suggested_resolution(
@@ -39,30 +136,71 @@ def generate_suggested_resolution(
     category: str,
     priority: str,
     retrieved_context: str,
+    similar_complaints: List[Dict],
+    knowledge_documents: List[Dict],
 ) -> str:
     """
-    Generate a suggested resolution using Gemini.
+    Generate the complaint resolution.
 
-    The Gemini prompt is grounded in the retrieved RAG context.
+    Gemini is used when enabled and available.
+
+    If Gemini fails and fallback is enabled, a local
+    RAG-based resolution is returned instead.
     """
+
+    global LLM_AVAILABLE
 
     if not isinstance(
         complaint,
         str,
     ) or not complaint.strip():
+
         raise ValueError(
             "complaint must be a non-empty string."
         )
 
-    prompt = build_resolution_prompt(
-        complaint=complaint,
-        department=department,
-        category=category,
-        priority=priority,
-        retrieved_context=retrieved_context,
-    )
+    # --------------------------------------------------------
+    # Try Gemini
+    # --------------------------------------------------------
 
-    return generate_resolution(prompt)
+    if ENABLE_LLM and LLM_AVAILABLE:
+
+        try:
+
+            prompt = build_resolution_prompt(
+                complaint=complaint,
+                department=department,
+                category=category,
+                priority=priority,
+                retrieved_context=retrieved_context,
+            )
+
+            return generate_resolution(prompt)
+
+        except Exception as error:
+
+            print(
+                "\nWarning: Gemini generation failed."
+            )
+
+            print(
+                f"Reason: {error}"
+            )
+
+            # Stop repeated API requests for this process
+            LLM_AVAILABLE = False
+
+            if not USE_LLM_FALLBACK:
+                raise
+
+    # --------------------------------------------------------
+    # Local fallback
+    # --------------------------------------------------------
+
+    return generate_fallback_resolution(
+        similar_complaints=similar_complaints,
+        knowledge_documents=knowledge_documents,
+    )
 
 
 # ============================================================
@@ -75,12 +213,8 @@ def build_ai_response(
     category: str,
     priority: str,
     retrieved_context: str,
-    similar_complaints: Optional[
-        List[Dict]
-    ] = None,
-    knowledge_documents: Optional[
-        List[Dict]
-    ] = None,
+    similar_complaints: Optional[List[Dict]] = None,
+    knowledge_documents: Optional[List[Dict]] = None,
     sources: Optional[List[Dict]] = None,
 ) -> Dict:
     """
@@ -91,6 +225,7 @@ def build_ai_response(
         complaint,
         str,
     ) or not complaint.strip():
+
         raise ValueError(
             "complaint must be a non-empty string."
         )
@@ -113,10 +248,6 @@ def build_ai_response(
         else []
     )
 
-    # --------------------------------------------------------
-    # Generate Gemini response
-    # --------------------------------------------------------
-
     suggested_resolution = (
         generate_suggested_resolution(
             complaint=complaint,
@@ -124,7 +255,22 @@ def build_ai_response(
             category=category,
             priority=priority,
             retrieved_context=retrieved_context,
+            similar_complaints=similar_complaints,
+            knowledge_documents=knowledge_documents,
         )
+    )
+
+    # Tell the caller whether Gemini or fallback produced it
+    response_model = (
+        RAG_MODEL_NAME
+        if LLM_AVAILABLE and ENABLE_LLM
+        else "RAG-Fallback"
+    )
+
+    response_status = (
+        "GENERATED"
+        if LLM_AVAILABLE and ENABLE_LLM
+        else "GENERATED_WITH_FALLBACK"
     )
 
     return {
@@ -136,17 +282,11 @@ def build_ai_response(
 
         "priority": priority,
 
-        "retrieved_context": (
-            retrieved_context
-        ),
+        "retrieved_context": retrieved_context,
 
-        "similar_complaints": (
-            similar_complaints
-        ),
+        "similar_complaints": similar_complaints,
 
-        "knowledge_documents": (
-            knowledge_documents
-        ),
+        "knowledge_documents": knowledge_documents,
 
         "suggested_resolution": (
             suggested_resolution
@@ -154,101 +294,7 @@ def build_ai_response(
 
         "sources": sources,
 
-        "model": RAG_MODEL_NAME,
+        "model": response_model,
 
-        "status": "GENERATED",
+        "status": response_status,
     }
-
-
-# ============================================================
-# TEST
-# ============================================================
-
-if __name__ == "__main__":
-
-    complaint = (
-        "There is a serious water pipe leak "
-        "behind the hostel building."
-    )
-
-    department = "Plumbing"
-    category = "Water Leakage"
-    priority = "HIGH"
-
-    retrieved_context = """
-CURRENT COMPLAINT
-There is a serious water pipe leak behind the hostel building.
-
-SIMILAR HISTORICAL COMPLAINT
-Complaint ID: 40
-Complaint: The plumbing pipe behind the hostel building is leaking
-Resolution: Inspect the affected pipeline and repair the leak.
-
-KNOWLEDGE BASE
-Severe leakage:
-Notify the plumbing maintenance team immediately
-and restrict the affected area if necessary.
-""".strip()
-
-    response = build_ai_response(
-        complaint=complaint,
-        department=department,
-        category=category,
-        priority=priority,
-        retrieved_context=retrieved_context,
-        similar_complaints=[
-            {
-                "complaint_id": 40,
-                "similarity": 0.8765,
-                "category": "Water Leakage",
-                "priority": "HIGH",
-                "resolution": (
-                    "Inspect the affected pipeline "
-                    "and repair the leak."
-                ),
-            }
-        ],
-        knowledge_documents=[
-            {
-                "source": "plumbing.txt",
-                "similarity": 0.5037,
-            }
-        ],
-        sources=[
-            {
-                "type": "historical_complaint",
-                "source": "complaint_40",
-                "similarity": 0.8765,
-            },
-            {
-                "type": "knowledge_document",
-                "source": "plumbing.txt",
-                "similarity": 0.5037,
-            },
-        ],
-    )
-
-    print("\n" + "=" * 70)
-    print("GEMINI RAG RESPONSE")
-    print("=" * 70)
-
-    print("\nComplaint:")
-    print(response["complaint"])
-
-    print("\nDepartment:")
-    print(response["department"])
-
-    print("\nCategory:")
-    print(response["category"])
-
-    print("\nPriority:")
-    print(response["priority"])
-
-    print("\nModel:")
-    print(response["model"])
-
-    print("\nAI-Generated Suggested Resolution:")
-    print(response["suggested_resolution"])
-
-    print("\nStatus:")
-    print(response["status"])

@@ -1,4 +1,4 @@
-# ============================================================
+#============================================================
 # API CONFIGURATION
 # ============================================================
 
@@ -15,7 +15,6 @@ API_PROTOCOL = "HTTPS"
 DEFAULT_PAGE = 1
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
-
 
 # ============================================================
 # USER ROLES
@@ -101,6 +100,8 @@ ENABLE_DUPLICATE_DETECTION = True
 ENABLE_RAG = True
 ENABLE_AI_FEEDBACK = True
 ENABLE_AI_EXPLANATION = True
+ENABLE_LLM = True
+USE_LLM_FALLBACK = True
 
 
 # ============================================================
