@@ -1,148 +1,96 @@
 """
 RAG response builder.
 
-This module converts retrieved RAG information into a structured
-AI-ready response.
+This module:
+1. Receives retrieved RAG information.
+2. Builds a grounded prompt.
+3. Sends the prompt to Gemini.
+4. Returns the generated resolution together with
+   the retrieved evidence.
 
-Current implementation:
-- Uses historical complaint resolutions when available.
-- Uses knowledge-base guidance.
-- Does NOT call an external LLM yet.
-
-The LLM integration can be added later without changing the
-retrieval pipeline.
+The Gemini API key is loaded from .env.
 """
 
 from typing import Dict, List, Optional
 
+from ai.prompts.resolution_prompt import (
+    build_resolution_prompt,
+)
 
-RAG_MODEL_NAME = "all-MiniLM-L6-v2"
+from ai.llm.gemini_client import (
+    generate_resolution,
+)
 
 
 # ============================================================
-# SUGGESTED RESOLUTION
+# MODEL
+# ============================================================
+
+RAG_MODEL_NAME = "gemini-3.8-flash"
+
+
+# ============================================================
+# AI RESPONSE
 # ============================================================
 
 def generate_suggested_resolution(
     complaint: str,
-    similar_complaints: List[Dict],
-    knowledge_documents: List[Dict],
+    department: str,
+    category: str,
+    priority: str,
+    retrieved_context: str,
 ) -> str:
     """
-    Generate a prototype suggested resolution.
+    Generate a suggested resolution using Gemini.
 
-    Historical complaint resolutions are used as the primary
-    practical reference. Knowledge-base content provides
-    additional department-specific guidance.
-
-    This is NOT an LLM call.
+    The Gemini prompt is grounded in the retrieved RAG context.
     """
 
-    if not isinstance(complaint, str) or not complaint.strip():
+    if not isinstance(
+        complaint,
+        str,
+    ) or not complaint.strip():
         raise ValueError(
             "complaint must be a non-empty string."
         )
 
-    # --------------------------------------------------------
-    # No retrieved information
-    # --------------------------------------------------------
+    prompt = build_resolution_prompt(
+        complaint=complaint,
+        department=department,
+        category=category,
+        priority=priority,
+        retrieved_context=retrieved_context,
+    )
 
-    if not similar_complaints and not knowledge_documents:
-        return (
-            "No relevant information was retrieved. "
-            "The complaint should be reviewed manually."
-        )
-
-    response_parts = []
-
-    # --------------------------------------------------------
-    # Historical resolution
-    # --------------------------------------------------------
-
-    if similar_complaints:
-
-        best_complaint = similar_complaints[0]
-
-        historical_resolution = (
-            best_complaint.get("resolution", "")
-        )
-
-        complaint_id = (
-            best_complaint.get("complaint_id", "unknown")
-        )
-
-        similarity = float(
-            best_complaint.get("similarity", 0.0)
-        )
-
-        if historical_resolution:
-            response_parts.append(
-                "Recommended approach based on the "
-                f"most similar historical complaint "
-                f"(ID={complaint_id}, "
-                f"similarity={similarity:.4f}):\n"
-                f"{historical_resolution}"
-            )
-
-    # --------------------------------------------------------
-    # Knowledge-base guidance
-    # --------------------------------------------------------
-
-    if knowledge_documents:
-
-        best_document = knowledge_documents[0]
-
-        source = best_document.get(
-            "source",
-            "knowledge base",
-        )
-
-        knowledge_text = best_document.get(
-            "text",
-            "",
-        )
-
-        if knowledge_text:
-
-            response_parts.append(
-                "Relevant knowledge-base guidance "
-                f"from {source}:\n"
-                f"{knowledge_text}"
-            )
-
-    # --------------------------------------------------------
-    # Final response
-    # --------------------------------------------------------
-
-    if not response_parts:
-        return (
-            "Relevant information was retrieved, but "
-            "no usable resolution text was available. "
-            "The complaint should be reviewed manually."
-        )
-
-    return "\n\n".join(response_parts)
+    return generate_resolution(prompt)
 
 
 # ============================================================
-# STRUCTURED AI RESPONSE
+# STRUCTURED RESPONSE
 # ============================================================
 
 def build_ai_response(
     complaint: str,
-    similar_complaints: Optional[List[Dict]] = None,
-    knowledge_documents: Optional[List[Dict]] = None,
-    retrieved_context: str = "",
+    department: str,
+    category: str,
+    priority: str,
+    retrieved_context: str,
+    similar_complaints: Optional[
+        List[Dict]
+    ] = None,
+    knowledge_documents: Optional[
+        List[Dict]
+    ] = None,
     sources: Optional[List[Dict]] = None,
 ) -> Dict:
     """
-    Build the structured AI response.
-
-    This response structure is designed for later integration
-    with an actual LLM.
+    Build the final structured AI response.
     """
 
-    if not isinstance(complaint, str) or not complaint.strip():
+    if not isinstance(
+        complaint,
+        str,
+    ) or not complaint.strip():
         raise ValueError(
             "complaint must be a non-empty string."
         )
@@ -165,22 +113,40 @@ def build_ai_response(
         else []
     )
 
+    # --------------------------------------------------------
+    # Generate Gemini response
+    # --------------------------------------------------------
+
     suggested_resolution = (
         generate_suggested_resolution(
             complaint=complaint,
-            similar_complaints=similar_complaints,
-            knowledge_documents=knowledge_documents,
+            department=department,
+            category=category,
+            priority=priority,
+            retrieved_context=retrieved_context,
         )
     )
 
     return {
         "complaint": complaint,
 
-        "retrieved_context": retrieved_context,
+        "department": department,
 
-        "similar_complaints": similar_complaints,
+        "category": category,
 
-        "knowledge_documents": knowledge_documents,
+        "priority": priority,
+
+        "retrieved_context": (
+            retrieved_context
+        ),
+
+        "similar_complaints": (
+            similar_complaints
+        ),
+
+        "knowledge_documents": (
+            knowledge_documents
+        ),
 
         "suggested_resolution": (
             suggested_resolution
@@ -190,7 +156,7 @@ def build_ai_response(
 
         "model": RAG_MODEL_NAME,
 
-        "status": "PROTOTYPE",
+        "status": "GENERATED",
     }
 
 
@@ -205,105 +171,84 @@ if __name__ == "__main__":
         "behind the hostel building."
     )
 
-    similar_complaints = [
-        {
-            "complaint_id": 40,
-            "complaint_text": (
-                "The plumbing pipe behind the "
-                "hostel building is leaking"
-            ),
-            "department": "Plumbing",
-            "category": "Water Leakage",
-            "priority": "HIGH",
-            "similarity": 0.8765,
-            "resolution": (
-                "Inspect the affected pipeline "
-                "and repair the leak."
-            ),
-        }
-    ]
+    department = "Plumbing"
+    category = "Water Leakage"
+    priority = "HIGH"
 
-    knowledge_documents = [
-        {
-            "source": "plumbing.txt",
-            "department": "Plumbing",
-            "similarity": 0.5037,
-            "text": (
-                "Water Leakage:\n"
-                "For a reported water leakage, identify "
-                "the exact location and estimate whether "
-                "the leakage is minor or severe.\n\n"
-                "Severe leakage:\n"
-                "Notify the plumbing maintenance team "
-                "immediately and restrict the affected "
-                "area if necessary."
-            ),
-        }
-    ]
+    retrieved_context = """
+CURRENT COMPLAINT
+There is a serious water pipe leak behind the hostel building.
 
-    sources = [
-        {
-            "type": "historical_complaint",
-            "source": "complaint_40",
-            "similarity": 0.8765,
-        },
-        {
-            "type": "knowledge_document",
-            "source": "plumbing.txt",
-            "similarity": 0.5037,
-        },
-    ]
+SIMILAR HISTORICAL COMPLAINT
+Complaint ID: 40
+Complaint: The plumbing pipe behind the hostel building is leaking
+Resolution: Inspect the affected pipeline and repair the leak.
+
+KNOWLEDGE BASE
+Severe leakage:
+Notify the plumbing maintenance team immediately
+and restrict the affected area if necessary.
+""".strip()
 
     response = build_ai_response(
         complaint=complaint,
-        similar_complaints=similar_complaints,
-        knowledge_documents=knowledge_documents,
-        retrieved_context=(
-            "CURRENT COMPLAINT\n"
-            "There is a serious water pipe leak "
-            "behind the hostel building."
-        ),
-        sources=sources,
+        department=department,
+        category=category,
+        priority=priority,
+        retrieved_context=retrieved_context,
+        similar_complaints=[
+            {
+                "complaint_id": 40,
+                "similarity": 0.8765,
+                "category": "Water Leakage",
+                "priority": "HIGH",
+                "resolution": (
+                    "Inspect the affected pipeline "
+                    "and repair the leak."
+                ),
+            }
+        ],
+        knowledge_documents=[
+            {
+                "source": "plumbing.txt",
+                "similarity": 0.5037,
+            }
+        ],
+        sources=[
+            {
+                "type": "historical_complaint",
+                "source": "complaint_40",
+                "similarity": 0.8765,
+            },
+            {
+                "type": "knowledge_document",
+                "source": "plumbing.txt",
+                "similarity": 0.5037,
+            },
+        ],
     )
 
     print("\n" + "=" * 70)
-    print("AI RESPONSE")
+    print("GEMINI RAG RESPONSE")
     print("=" * 70)
 
     print("\nComplaint:")
     print(response["complaint"])
 
+    print("\nDepartment:")
+    print(response["department"])
+
+    print("\nCategory:")
+    print(response["category"])
+
+    print("\nPriority:")
+    print(response["priority"])
+
     print("\nModel:")
     print(response["model"])
 
-    print("\nSuggested Resolution:")
+    print("\nAI-Generated Suggested Resolution:")
     print(response["suggested_resolution"])
-
-    print("\nHistorical Complaints:")
-
-    for item in response["similar_complaints"]:
-        print(
-            f"- ID={item['complaint_id']} | "
-            f"similarity={item['similarity']:.4f}"
-        )
-
-    print("\nKnowledge Documents:")
-
-    for item in response["knowledge_documents"]:
-        print(
-            f"- {item['source']} | "
-            f"similarity={item['similarity']:.4f}"
-        )
-
-    print("\nSources:")
-
-    for source in response["sources"]:
-        print(
-            f"- {source['type']} | "
-            f"{source['source']} | "
-            f"similarity="
-            f"{source['similarity']:.4f}"
-        )
 
     print("\nStatus:")
     print(response["status"])
