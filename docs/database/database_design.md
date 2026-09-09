@@ -91,9 +91,9 @@ Admins can create/manage categories under each department:
 │                                                  │
 │  OPEN                                            │
 │    ↓ (AI Analysis)                              │
-│  AI_ANALYZED  [AI routing determines department] │
-│    ↓ (Assignment)                               │
-│  ASSIGNED     [Officer assigned to handle]       │
+│  OPEN                                            │
+│    ↓ (Manual department handling)               │
+│  ASSIGNED     [Handled manually in dashboard]    │
 │    ↓ (Work in progress)                         │
 │  IN_PROGRESS  [Officer investigating]            │
 │    ↓ (Solution provided)                        │
@@ -384,13 +384,6 @@ CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
 - CLOSED
 - REOPENED
 
-**assignment_status:**
-- PENDING
-- ACCEPTED
-- IN_PROGRESS
-- COMPLETED
-- REASSIGNED
-
 **change_type (complaint_history):**
 - CREATED
 - UPDATED
@@ -418,7 +411,7 @@ CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
          |            |      ┌─────┼─────┐
     PERMISSIONS    CATEGORIES |     |     |
          |                    |     |     |
-    ROLE_PERMS        ASSIGNMENTS  |     |
+    ROLE_PERMS                     |     |
                                    |     |
                       COMPLAINT_EMBEDDINGS
                       

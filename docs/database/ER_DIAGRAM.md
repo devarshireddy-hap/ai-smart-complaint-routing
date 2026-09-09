@@ -95,19 +95,6 @@ erDiagram
         timestamp closed_at
     }
 
-    ASSIGNMENTS {
-        int assignment_id PK
-        int complaint_id FK
-        int assigned_to FK
-        int assigned_by FK
-        timestamp assigned_at
-        timestamp deadline
-        varchar status
-        text notes
-        timestamp completed_at
-        timestamp updated_at
-    }
-
     COMPLAINT_HISTORY {
         int history_id PK
         int complaint_id FK
@@ -220,9 +207,6 @@ erDiagram
     DEPARTMENTS ||--o{ COMPLAINTS : suggested_for
     COMPLAINTS ||--o{ COMPLAINTS : duplicates
 
-    COMPLAINTS ||--o{ ASSIGNMENTS : has
-    USERS ||--o{ ASSIGNMENTS : assigned_to
-    USERS ||--o{ ASSIGNMENTS : assigned_by
     COMPLAINTS ||--o{ COMPLAINT_HISTORY : tracks
     USERS ||--o{ COMPLAINT_HISTORY : changes
     COMPLAINTS ||--o| RESOLUTIONS : receives

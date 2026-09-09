@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
     department_id INTEGER REFERENCES departments(department_id) ON DELETE SET NULL,
     priority VARCHAR(20) CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')) DEFAULT 'MEDIUM',
-    status VARCHAR(50) CHECK (status IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED')) DEFAULT 'OPEN',
+    status VARCHAR(50) CHECK (status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED')) DEFAULT 'OPEN',
     urgency_score INTEGER DEFAULT 0, -- ML predicted urgency (0-100)
     location VARCHAR(255),
     attachment_urls TEXT[], -- Array of attachment URLs

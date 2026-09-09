@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
     department_id INTEGER REFERENCES departments(department_id) ON DELETE SET NULL,
     priority VARCHAR(20) CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')) DEFAULT 'MEDIUM',
-    status VARCHAR(50) CHECK (status IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED')) DEFAULT 'OPEN',
+    status VARCHAR(50) CHECK (status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED')) DEFAULT 'OPEN',
     urgency_score INTEGER DEFAULT 0 CHECK (urgency_score >= 0 AND urgency_score <= 100),
     location VARCHAR(255),
     attachment_urls TEXT[],
@@ -141,27 +141,7 @@ CREATE INDEX idx_complaints_department_id ON complaints(department_id);
 CREATE INDEX idx_complaints_created_at ON complaints(created_at DESC);
 
 -- ============================================================================
--- 5. ASSIGNMENTS
--- ============================================================================
-CREATE TABLE IF NOT EXISTS assignments (
-    assignment_id SERIAL PRIMARY KEY,
-    complaint_id INTEGER NOT NULL REFERENCES complaints(complaint_id) ON DELETE CASCADE,
-    assigned_to INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    assigned_by INTEGER NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
-    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deadline TIMESTAMP,
-    status VARCHAR(30) CHECK (status IN ('PENDING', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'REASSIGNED')) DEFAULT 'PENDING',
-    notes TEXT,
-    completed_at TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_assignments_complaint_id ON assignments(complaint_id);
-CREATE INDEX idx_assignments_assigned_to ON assignments(assigned_to);
-CREATE INDEX idx_assignments_status ON assignments(status);
-
--- ============================================================================
--- 6. COMPLAINT HISTORY & RESOLUTIONS
+-- 5. COMPLAINT HISTORY & RESOLUTIONS
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS complaint_history (
     history_id SERIAL PRIMARY KEY,
@@ -196,7 +176,7 @@ CREATE INDEX idx_resolutions_complaint_id ON resolutions(complaint_id);
 CREATE INDEX idx_resolutions_resolved_at ON resolutions(resolved_at DESC);
 
 -- ============================================================================
--- 7. EMBEDDINGS & VECTOR SEARCH
+-- 6. EMBEDDINGS & VECTOR SEARCH
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS complaint_embeddings (
     embedding_id SERIAL PRIMARY KEY,
@@ -211,7 +191,7 @@ CREATE INDEX idx_complaint_embeddings_vector ON complaint_embeddings
 USING hnsw (embedding_vector vector_cosine_ops);
 
 -- ============================================================================
--- 8. KNOWLEDGE BASE (NEW - for RAG)
+-- 7. KNOWLEDGE BASE (NEW - for RAG)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS knowledge_document_chunks (
     chunk_id SERIAL PRIMARY KEY,
@@ -233,7 +213,7 @@ CREATE INDEX idx_knowledge_chunks_embedding ON knowledge_document_chunks
 USING hnsw (chunk_embedding vector_cosine_ops);
 
 -- ============================================================================
--- 9. AUDIT LOGS
+-- 8. AUDIT LOGS
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS audit_logs (
     log_id SERIAL PRIMARY KEY,
@@ -254,7 +234,7 @@ CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
 CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
 
 -- ============================================================================
--- 10. BACKUP & ROLLBACK RECORDS
+-- 9. BACKUP & ROLLBACK RECORDS
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS backup_records (
     backup_id SERIAL PRIMARY KEY,
@@ -279,7 +259,7 @@ CREATE TABLE IF NOT EXISTS rollback_records (
 );
 
 -- ============================================================================
--- 11. FEEDBACK
+-- 10. FEEDBACK
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS feedback (
     feedback_id SERIAL PRIMARY KEY,
@@ -309,7 +289,6 @@ CREATE TRIGGER departments_updated_at_trigger BEFORE UPDATE ON departments FOR E
 CREATE TRIGGER categories_updated_at_trigger BEFORE UPDATE ON categories FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER complaints_updated_at_trigger BEFORE UPDATE ON complaints FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER resolutions_updated_at_trigger BEFORE UPDATE ON resolutions FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-CREATE TRIGGER assignments_updated_at_trigger BEFORE UPDATE ON assignments FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER complaint_embeddings_updated_at_trigger BEFORE UPDATE ON complaint_embeddings FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER knowledge_chunks_updated_at_trigger BEFORE UPDATE ON knowledge_document_chunks FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 

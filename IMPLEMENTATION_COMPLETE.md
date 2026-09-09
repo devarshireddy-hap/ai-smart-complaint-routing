@@ -13,11 +13,11 @@
 ## What You Have Delivered
 
 ### ✅ Complete PostgreSQL Database Schema
-- **17 Tables** fully designed and implemented
+- **16 Tables** fully designed and implemented
 - **150+ Columns** across all tables
 - **40+ Constraints** for data integrity
 - **25+ Indexes** for performance optimization
-- **8+ Triggers** for automated actions
+- **7+ Triggers** for automated actions
 
 ### ✅ All Critical Corrections Applied
 Based on the "Misleads & Final Frozen Things" chat:
@@ -38,7 +38,7 @@ Based on the "Misleads & Final Frozen Things" chat:
 ### ✅ Complete Documentation
 - Database design guide (14KB+)
 - Implementation summary with checklist
-- SQL scripts for all 17 tables
+- SQL scripts for all 16 tables
 - Seed data for initial setup
 
 ### ✅ Version Control
@@ -58,7 +58,6 @@ Based on the "Misleads & Final Frozen Things" chat:
 02_roles.sql                   ← RBAC system
 03_departments_corrected.sql   ← Frozen departments
 04_complaints_corrected.sql    ← Complaint lifecycle
-05_assignments.sql             ← Routing management
 06_history_resolutions.sql     ← Audit trail
 07_embeddings_and_knowledge.sql ← AI/RAG support
 ```
@@ -204,7 +203,7 @@ Department Prediction (TECHNICAL, FINANCE, etc.)
 - CREATED: New complaint submitted
 - UPDATED: Any field changed
 - STATUS_CHANGED: Complaint status updated
-- ASSIGNED: Assigned to officer
+- ASSIGNED: Manually handled by the department
 - RESOLVED: Marked as resolved
 - REOPENED: Reopened by user
 ```
@@ -242,7 +241,7 @@ Department Prediction (TECHNICAL, FINANCE, etc.)
 
 1. **Database Schema**
    - Show: database/schema/00_init.sql
-   - Explain: All 17 tables and relationships
+   - Explain: All 16 tables and relationships
    - Mention: Soft delete, frozen departments, audit logging
 
 2. **Practical Demo**
@@ -344,11 +343,11 @@ psql complaint_routing -c "DROP SCHEMA public CASCADE;"
 
 | Metric | Count |
 |--------|-------|
-| Tables | 17 |
+| Tables | 16 |
 | Columns | 150+ |
 | Constraints | 40+ |
 | Indexes | 25+ |
-| Triggers | 8+ |
+| Triggers | 7+ |
 | Permissions | 19 |
 | Roles | 3 |
 | Departments | 5 (Frozen) |
@@ -363,7 +362,7 @@ psql complaint_routing -c "DROP SCHEMA public CASCADE;"
 ## Final Checklist ✅
 
 - [x] Database schema designed and implemented
-- [x] All 17 tables created with relationships
+- [x] All 16 tables created with relationships
 - [x] Primary keys, foreign keys, constraints
 - [x] Indexes for performance
 - [x] Triggers for automation

@@ -63,7 +63,7 @@ This system automates complaint routing across multiple departments using:
 
 ### Complaint Status Workflow
 ```
-OPEN → AI_ANALYZED → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED
+OPEN → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED
                                                     ↓
                                               REOPENED
 ```

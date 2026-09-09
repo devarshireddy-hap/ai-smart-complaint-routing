@@ -11,7 +11,7 @@
 
 ### 1. Project Structure
 ✅ Complete folder structure created matching the finalized documentation  
-✅ All 17 tables designed and implemented  
+✅ All 16 tables designed and implemented
 ✅ Database schema split into logical files  
 ✅ Seeds and initialization data prepared  
 
@@ -21,7 +21,7 @@
 ✅ **Departments** - FROZEN set of 5 immutable departments  
 ✅ **Categories** - Dynamic, managed under departments  
 ✅ **Complaints** - Full lifecycle management with AI routing  
-✅ **Assignments** - Track complaint routing to officers  
+✅ **Complaint Status** - Manual department handling tracked on complaints
 ✅ **Complaint History** - Complete audit trail  
 ✅ **Resolutions** - 1:1 relationship per complaint  
 ✅ **Embeddings** - Vector storage for semantic search (384-dim)  
@@ -89,7 +89,6 @@ database/
 │   ├── 02_roles.sql                   ← RBAC setup
 │   ├── 03_departments_corrected.sql   ← Frozen departments
 │   ├── 04_complaints_corrected.sql    ← Complaint lifecycle
-│   ├── 05_assignments.sql             ← Routing management
 │   ├── 06_history_resolutions.sql     ← Audit trail
 │   └── 07_embeddings_and_knowledge.sql ← AI/RAG support
 │
@@ -132,7 +131,7 @@ User → Role → Permissions
 **Features:**
 - Fine-grained permissions (19 total)
 - Multiple roles per user possible
-- Audited role assignments
+- Audited role and complaint-status changes
 
 ### 4. Semantic AI Routing
 ```sql
@@ -374,11 +373,11 @@ OPEN → IN_PROGRESS → RESOLVED → CLOSED
 
 | Metric | Value |
 |--------|-------|
-| Tables | 17 |
+| Tables | 16 |
 | Columns | 150+ |
 | Indexes | 25+ |
 | Constraints | 40+ |
-| Triggers | 8+ |
+| Triggers | 7+ |
 | Enums | 5 |
 | Fixed Values | 5 departments, 3 roles, 4 priorities |
 | Initial Permissions | 19 |
@@ -391,7 +390,7 @@ OPEN → IN_PROGRESS → RESOLVED → CLOSED
 ## Completion Checklist ✅
 
 - [x] Database schema designed and implemented
-- [x] All 17 tables created with proper relationships
+- [x] All 16 tables created with proper relationships
 - [x] Soft delete implementation for users
 - [x] Frozen departments enforcement
 - [x] Vector search setup with pgvector
