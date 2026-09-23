@@ -500,4 +500,4 @@ postgresql://postgres:password@localhost:5432/complaint_routing
 6. Implement RAG pipeline for knowledge base
 7. Set up vector embeddings service
 8. Configure backup schedule
-`n### Database principle`\nThe final design keeps assignment logic outside the schema and relies on complaint status plus department selection for manual handling.`n`n### Status tracking`\nAll status transitions such as ASSIGNED, IN_PROGRESS, RESOLVED, and REOPENED are stored directly in the complaints table to preserve audit history.`n
+`n### Database principle`\nThe final design keeps assignment logic outside the schema and relies on complaint status plus department selection for manual handling.`n`n### Status tracking`\nAll status transitions such as ASSIGNED, IN_PROGRESS, RESOLVED, and REOPENED are stored directly in the complaints table to preserve audit history.`n`n### Frozen department rule`\nDepartments are not created or deleted dynamically. The system uses the fixed set of five departments and keeps the complaint lifecycle in status transitions.`n
