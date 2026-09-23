@@ -243,4 +243,4 @@ The diagram can be rendered by GitHub and viewed in Mermaid-compatible tools
 such as Mermaid Live Editor.
 
 In this version, status changes like `ASSIGNED` and `IN_PROGRESS` are tracked on the complaint record itself.
-`n> Manual workflow note: department and status are the active tracking fields; assignment is a dashboard action, not a database entity.`n`n> Relationship note: USERS -> COMPLAINTS -> COMPLAINT_HISTORY, with no assignment table in the final schema.`n
+`n> Manual workflow note: department and status are the active tracking fields; assignment is a dashboard action, not a database entity.`n`n> Relationship note: USERS -> COMPLAINTS -> COMPLAINT_HISTORY, with no assignment table in the final schema.`n`n> Final schema note: all complaint lifecycle changes are tracked in complaint_history and status fields, with manual assignment handled by dashboard logic.`n
