@@ -412,4 +412,4 @@ OPEN → IN_PROGRESS → RESOLVED → CLOSED
 
 Generated: 2026-08-29 19:55 IST  
 Git Commit: 36b1933
-`n> Final design rule: the database keeps complaint flow in the complaint record and never creates a separate assignment table.`n
+`n> Final design rule: the database keeps complaint flow in the complaint record and never creates a separate assignment table.`n`n### Final database principle\nThe schema is intentionally reduced to 16 tables because assignment is not modeled as a database entity in the final design.`n
