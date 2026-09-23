@@ -84,6 +84,8 @@ Admins can create/manage categories under each department:
 
 #### Main Complaint Workflow
 
+The complaint lifecycle is maintained manually through the dashboard; status changes such as ASSIGNED and IN_PROGRESS are stored directly on the complaint record.
+
 ```
 ┌──────────────────────────────────────────────────┐
 │           COMPLAINT STATUS WORKFLOW              │
