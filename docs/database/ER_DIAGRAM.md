@@ -1,9 +1,10 @@
 # Entity-Relationship Diagram
 
 This diagram represents the finalized PostgreSQL database schema for the AI
-Smart Complaint Routing system. Department handling is represented via `department_id` and `status`, without a separate assignment table.
+Smart Complaint Routing system. The final design does not include an `ASSIGNMENTS` table or a `RESOLUTIONS` table. Department handling is represented via `department_id`, and the current complaint stage is stored in the `status` field.
 
 ```mermaid
+%% Final schema note: no assignment table and no resolution table
 erDiagram
     USERS {
         int user_id PK
