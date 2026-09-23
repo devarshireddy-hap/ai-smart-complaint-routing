@@ -4,7 +4,6 @@ This diagram represents the finalized PostgreSQL database schema for the AI
 Smart Complaint Routing system. The final design does not include an `ASSIGNMENTS` table or a `RESOLUTIONS` table. Department handling is represented via `department_id`, and the current complaint stage is stored in the `status` field.
 
 ```mermaid
-%% Final schema note: no assignment table and no resolution table
 erDiagram
     USERS {
         int user_id PK
@@ -182,7 +181,6 @@ erDiagram
     ROLES ||--o{ USER_ROLES : contains
     ROLES ||--o{ ROLE_PERMISSIONS : grants
     PERMISSIONS ||--o{ ROLE_PERMISSIONS : includes
-    USERS ||--o{ USER_ROLES : assigns
 
     DEPARTMENTS ||--o{ USERS : employs
     USERS ||--o| DEPARTMENTS : heads
@@ -191,7 +189,6 @@ erDiagram
     USERS ||--o{ COMPLAINTS : submits
     CATEGORIES ||--o{ COMPLAINTS : classifies
     DEPARTMENTS ||--o{ COMPLAINTS : receives
-    DEPARTMENTS ||--o{ COMPLAINTS : suggested_for
     COMPLAINTS ||--o{ COMPLAINTS : duplicates
 
     COMPLAINTS ||--o{ COMPLAINT_HISTORY : tracks
