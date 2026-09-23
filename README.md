@@ -1,6 +1,6 @@
 # AI Smart Complaint Routing System
 
-AI-powered smart complaint routing and resolution system using RAG, vector search, and RBAC.
+AI-powered smart complaint routing and resolution system using RAG, vector search, RBAC, and manual dashboard-based complaint tracking.
 
 ## Project Overview
 
