@@ -51,6 +51,8 @@ This system automates complaint routing across multiple departments using:
 - PLUMBING
 - SECURITY
 
+Note: departmental structure is fixed and complaint assignment is handled from the dashboard using complaint status.
+
 ### User Types
 - STUDENT
 - FACULTY
