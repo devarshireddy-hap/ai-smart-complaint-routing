@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI Smart Complaint Routing system uses PostgreSQL 15+ with pgvector extension for semantic vector search. The database schema implements a comprehensive role-based access control system with full audit capabilities. Complaint status is managed manually via the dashboard rather than through a dedicated assignment table.
+The AI Smart Complaint Routing system uses PostgreSQL 15+ with pgvector extension for semantic vector search. The database schema implements a comprehensive role-based access control system with full audit capabilities. Complaint status is managed manually from the dashboard instead of a separate assignment table. Complaint status is managed manually via the dashboard rather than through a dedicated assignment table.
 
 ## Tech Stack
 
