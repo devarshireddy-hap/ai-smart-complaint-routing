@@ -500,3 +500,4 @@ postgresql://postgres:password@localhost:5432/complaint_routing
 6. Implement RAG pipeline for knowledge base
 7. Set up vector embeddings service
 8. Configure backup schedule
+`n### Database principle`\nThe final design keeps assignment logic outside the schema and relies on complaint status plus department selection for manual handling.`n
