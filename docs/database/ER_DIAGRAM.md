@@ -243,3 +243,4 @@ The diagram can be rendered by GitHub and viewed in Mermaid-compatible tools
 such as Mermaid Live Editor.
 
 In this version, status changes like `ASSIGNED` and `IN_PROGRESS` are tracked on the complaint record itself.
+`n> Manual workflow note: department and status are the active tracking fields; assignment is a dashboard action, not a database entity.`n
