@@ -109,6 +109,7 @@ FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE SET 
 -- 4. COMPLAINTS TABLE
 -- ============================================================================
 -- Main complaints table with AI routing support
+-- Complaint assignment is managed manually in the dashboard through the complaint status and department fields.
 CREATE TABLE IF NOT EXISTS complaints (
     complaint_id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
