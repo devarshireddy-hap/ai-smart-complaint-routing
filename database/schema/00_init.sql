@@ -315,4 +315,4 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER prevent_dept_delete_trigger BEFORE DELETE ON departments FOR EACH ROW EXECUTE FUNCTION prevent_department_deletion();
-`n-- Manual assignment workflow: the dashboard updates complaint status and department; no separate assignment table is used.`n
+`n-- Manual assignment workflow: the dashboard updates complaint status and department; no separate assignment table is used.`n`n-- Complaints keep the active work state in status and department_id for dashboard-driven routing and staff updates.`n
