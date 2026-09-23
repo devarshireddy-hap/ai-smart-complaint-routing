@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
     department_id INTEGER REFERENCES departments(department_id) ON DELETE SET NULL,
     priority VARCHAR(20) CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')) DEFAULT 'MEDIUM',
-    status VARCHAR(50) CHECK (status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED')) DEFAULT 'OPEN',
+    status VARCHAR(50) CHECK (status IN ('SUBMITTED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED')) DEFAULT 'SUBMITTED',
     urgency_score INTEGER DEFAULT 0 CHECK (urgency_score >= 0 AND urgency_score <= 100),
     location VARCHAR(255),
     attachment_urls TEXT[],
@@ -131,8 +131,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     rag_relevant_docs TEXT[],
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP,
-    closed_at TIMESTAMP
+    resolved_at TIMESTAMP
 );
 
 CREATE INDEX idx_complaints_user_id ON complaints(user_id);
@@ -142,7 +141,7 @@ CREATE INDEX idx_complaints_department_id ON complaints(department_id);
 CREATE INDEX idx_complaints_created_at ON complaints(created_at DESC);
 
 -- ============================================================================
--- 5. COMPLAINT HISTORY & RESOLUTIONS
+-- 5. COMPLAINT HISTORY
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS complaint_history (
     history_id SERIAL PRIMARY KEY,
@@ -159,22 +158,6 @@ CREATE TABLE IF NOT EXISTS complaint_history (
 
 CREATE INDEX idx_complaint_history_complaint_id ON complaint_history(complaint_id);
 CREATE INDEX idx_complaint_history_changed_at ON complaint_history(changed_at DESC);
-
-CREATE TABLE IF NOT EXISTS resolutions (
-    resolution_id SERIAL PRIMARY KEY,
-    complaint_id INTEGER NOT NULL UNIQUE REFERENCES complaints(complaint_id) ON DELETE CASCADE,
-    resolved_by INTEGER NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
-    resolution_description TEXT NOT NULL,
-    resolution_category VARCHAR(100),
-    action_taken TEXT,
-    time_to_resolve INTERVAL,
-    satisfaction_likely BOOLEAN,
-    resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_resolutions_complaint_id ON resolutions(complaint_id);
-CREATE INDEX idx_resolutions_resolved_at ON resolutions(resolved_at DESC);
 
 -- ============================================================================
 -- 6. EMBEDDINGS & VECTOR SEARCH
@@ -289,7 +272,6 @@ CREATE TRIGGER users_updated_at_trigger BEFORE UPDATE ON users FOR EACH ROW EXEC
 CREATE TRIGGER departments_updated_at_trigger BEFORE UPDATE ON departments FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER categories_updated_at_trigger BEFORE UPDATE ON categories FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER complaints_updated_at_trigger BEFORE UPDATE ON complaints FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-CREATE TRIGGER resolutions_updated_at_trigger BEFORE UPDATE ON resolutions FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER complaint_embeddings_updated_at_trigger BEFORE UPDATE ON complaint_embeddings FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 CREATE TRIGGER knowledge_chunks_updated_at_trigger BEFORE UPDATE ON knowledge_document_chunks FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
@@ -315,4 +297,3 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER prevent_dept_delete_trigger BEFORE DELETE ON departments FOR EACH ROW EXECUTE FUNCTION prevent_department_deletion();
-`n-- Manual assignment workflow: the dashboard updates complaint status and department; no separate assignment table is used.`n`n-- Complaints keep the active work state in status and department_id for dashboard-driven routing and staff updates.`n`n-- Status history is preserved in complaint_history to record manual updates without an assignments table.`n

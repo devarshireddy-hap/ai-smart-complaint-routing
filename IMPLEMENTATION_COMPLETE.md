@@ -24,9 +24,9 @@ Based on the "Misleads & Final Frozen Things" chat:
 1. ✓ User soft-delete implementation
 2. ✓ Frozen departments (immutable set of 5)
 3. ✓ Added knowledge base table for RAG
-4. ✓ Single resolution per complaint constraint
-5. ✓ Semantic AI routing setup (NO keyword matching)
-6. ✓ Complete status workflow definition
+4. ✓ Complaint statuses simplified to SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED
+5. ✓ No separate resolution table in the final design
+6. ✓ Semantic AI routing setup (NO keyword matching)
 7. ✓ Role-based access control (RBAC) implementation
 
 ### ✅ Production-Ready Configuration
@@ -58,7 +58,7 @@ Based on the "Misleads & Final Frozen Things" chat:
 02_roles.sql                   ← RBAC system
 03_departments_corrected.sql   ← Frozen departments
 04_complaints_corrected.sql    ← Complaint lifecycle
-06_history_resolutions.sql     ← Audit trail
+06_history_tracking.sql        ← Audit trail
 07_embeddings_and_knowledge.sql ← AI/RAG support
 ```
 
@@ -144,8 +144,9 @@ docker exec complaint-routing-db psql -U postgres -d complaint_routing -f /docke
 
 **Complaint Status:**
 ```
-OPEN → IN_PROGRESS → RESOLVED → CLOSED
-    ↑← REOPENED ←↑
+SUBMITTED → ASSIGNED → IN_PROGRESS → RESOLVED
+                                ↓
+                             REJECTED
 ```
 
 ### 2. Database Constraints
@@ -164,11 +165,11 @@ OPEN → IN_PROGRESS → RESOLVED → CLOSED
 -- Only admins can manage categories under departments
 ```
 
-**Complaint Resolution:**
+**Complaint Status Tracking:**
 ```sql
--- ONE active resolution per complaint
--- UNIQUE constraint enforced
--- Resolution history stored in complaint_history table
+-- Complaint state is stored directly in the status column
+-- Final values are: SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED
+-- No resolution table is used in the final schema
 ```
 
 ### 3. AI & Vector Search
@@ -200,12 +201,13 @@ Department Prediction (TECHNICAL, FINANCE, etc.)
 
 **complaint_history:** Tracks every change to each complaint
 ```
-- CREATED: New complaint submitted
+- SUBMITTED: New complaint created
 - UPDATED: Any field changed
 - STATUS_CHANGED: Complaint status updated
 - ASSIGNED: Manually handled by the department
+- IN_PROGRESS: Active investigation
 - RESOLVED: Marked as resolved
-- REOPENED: Reopened by user
+- REJECTED: Complaint was rejected
 ```
 
 **audit_logs:** System-wide logging
@@ -404,4 +406,3 @@ Ready for backend team integration.
 *Project: AI Smart Complaint Routing System*  
 *Component: Database (DBMS)*  
 *Student: Devarshi Reddy (24BCB0148)*
-`n> The final schema is aligned to the manual dashboard workflow and contains 16 tables, with assignment logic handled outside the DB.`n

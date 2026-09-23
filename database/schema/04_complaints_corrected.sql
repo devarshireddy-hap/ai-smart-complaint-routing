@@ -1,7 +1,6 @@
--- CORRECTED COMPLAINTS TABLE
--- Added proper status lifecycle constraints
--- Status values: OPEN -> IN_PROGRESS -> RESOLVED -> CLOSED
--- Special case: REOPENED when resolved complaint gets new issue
+-- COMPLAINTS TABLE
+-- Stores all complaints submitted by users
+-- Final status set: SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED
 
 CREATE TABLE IF NOT EXISTS complaints (
     complaint_id SERIAL PRIMARY KEY,
@@ -10,36 +9,21 @@ CREATE TABLE IF NOT EXISTS complaints (
     description TEXT NOT NULL,
     category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
     department_id INTEGER REFERENCES departments(department_id) ON DELETE SET NULL,
-    
-    -- Priority must be one of: LOW, MEDIUM, HIGH, URGENT
     priority VARCHAR(20) CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')) DEFAULT 'MEDIUM',
-    
-    -- Status lifecycle: OPEN -> IN_PROGRESS -> RESOLVED -> CLOSED (or REOPENED)
-    status VARCHAR(50) CHECK (status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED')) DEFAULT 'OPEN',
-    
-    -- AI confidence and analysis
+    status VARCHAR(50) CHECK (status IN ('SUBMITTED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED')) DEFAULT 'SUBMITTED',
     urgency_score INTEGER DEFAULT 0 CHECK (urgency_score >= 0 AND urgency_score <= 100),
     location VARCHAR(255),
     attachment_urls TEXT[],
     submission_mode VARCHAR(20) DEFAULT 'WEB' CHECK (submission_mode IN ('WEB', 'MOBILE', 'IN_PERSON')),
-    
-    -- Duplicate detection
     is_duplicate BOOLEAN DEFAULT FALSE,
     duplicate_of INTEGER REFERENCES complaints(complaint_id) ON DELETE SET NULL,
-    
-    -- AI routing confidence
     confidence_score FLOAT DEFAULT 0 CHECK (confidence_score >= 0 AND confidence_score <= 1),
     ai_suggested_department_id INTEGER REFERENCES departments(department_id) ON DELETE SET NULL,
     ai_suggested_priority VARCHAR(20),
-    
-    -- RAG related
     rag_relevant_docs TEXT[],
-    
-    -- Timestamps
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP,
-    closed_at TIMESTAMP
+    resolved_at TIMESTAMP
 );
 
 -- Create indexes for common queries

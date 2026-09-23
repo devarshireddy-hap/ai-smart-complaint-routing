@@ -23,7 +23,6 @@
 ✅ **Complaints** - Full lifecycle management with AI routing  
 ✅ **Complaint Status** - Manual department handling tracked on complaints
 ✅ **Complaint History** - Complete audit trail  
-✅ **Resolutions** - 1:1 relationship per complaint  
 ✅ **Embeddings** - Vector storage for semantic search (384-dim)  
 ✅ **Knowledge Base** - RAG document chunks for retrieval  
 ✅ **Audit Logs** - System-wide action logging  
@@ -35,7 +34,8 @@
 ✅ Frozen departments (no creation/deletion)  
 ✅ Dynamic category management  
 ✅ Added KNOWLEDGE_DOCUMENT_CHUNKS table for RAG  
-✅ Single resolution per complaint  
+✅ Complaint status workflow simplified to SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED  
+✅ No separate resolution table used in the final design  
 ✅ Proper status workflow constraints  
 ✅ Semantic AI routing setup (no keyword matching)  
 ✅ Role-based permission constraints  
@@ -89,7 +89,7 @@ database/
 │   ├── 02_roles.sql                   ← RBAC setup
 │   ├── 03_departments_corrected.sql   ← Frozen departments
 │   ├── 04_complaints_corrected.sql    ← Complaint lifecycle
-│   ├── 06_history_resolutions.sql     ← Audit trail
+│   ├── 06_history_tracking.sql        ← Audit trail
 │   └── 07_embeddings_and_knowledge.sql ← AI/RAG support
 │
 ├── seeds/
@@ -348,8 +348,9 @@ LOW, MEDIUM, HIGH, URGENT
 
 **Complaint Status:**
 ```
-OPEN → IN_PROGRESS → RESOLVED → CLOSED
-            ↑←←←←←←← REOPENED ←←←←←←←
+SUBMITTED → ASSIGNED → IN_PROGRESS → RESOLVED
+                                ↓
+                             REJECTED
 ```
 
 ---
@@ -412,4 +413,3 @@ OPEN → IN_PROGRESS → RESOLVED → CLOSED
 
 Generated: 2026-08-29 19:55 IST  
 Git Commit: 36b1933
-`n> Final design rule: the database keeps complaint flow in the complaint record and never creates a separate assignment table.`n`n### Final database principle\nThe schema is intentionally reduced to 16 tables because assignment is not modeled as a database entity in the final design.`n

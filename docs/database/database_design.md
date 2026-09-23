@@ -84,28 +84,12 @@ Admins can create/manage categories under each department:
 
 #### Main Complaint Workflow
 
-The complaint lifecycle is maintained manually through the dashboard; status changes such as ASSIGNED and IN_PROGRESS are stored directly on the complaint record.
+The complaint lifecycle is maintained manually through the dashboard. The status field shows the current state directly on the complaint record, and there is no separate resolution table in the final design.
 
 ```
-┌──────────────────────────────────────────────────┐
-│           COMPLAINT STATUS WORKFLOW              │
-├──────────────────────────────────────────────────┤
-│                                                  │
-│  OPEN                                            │
-│    ↓ (AI Analysis)                              │
-│  OPEN                                            │
-│    ↓ (Manual department handling)               │
-│  ASSIGNED     [Handled manually in dashboard]    │
-│    ↓ (Work in progress)                         │
-│  IN_PROGRESS  [Officer investigating]            │
-│    ↓ (Solution provided)                        │
-│  RESOLVED     [Fix applied, awaiting feedback]   │
-│    ├→ CLOSED  [User satisfied, done]             │
-│    └→ REOPENED [User not satisfied]              │
-│         ↓ (Back to investigation)               │
-│      IN_PROGRESS                                 │
-│                                                  │
-└──────────────────────────────────────────────────┘
+SUBMITTED → ASSIGNED → IN_PROGRESS → RESOLVED
+                                ↓
+                             REJECTED
 ```
 
 #### Complaint Table Fields
@@ -118,7 +102,7 @@ description          TEXT
 category_id          INTEGER (selected/AI-suggested)
 department_id        INTEGER (selected/AI-suggested)
 priority             ENUM(LOW, MEDIUM, HIGH, URGENT)
-status               ENUM(OPEN, IN_PROGRESS, RESOLVED, CLOSED, REOPENED)
+status               ENUM(SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED)
 urgency_score        INTEGER (0-100, AI-calculated)
 confidence_score     FLOAT (0-1, AI confidence)
 is_duplicate         BOOLEAN
@@ -130,7 +114,6 @@ rag_relevant_docs    TEXT[] (relevant knowledge chunks)
 created_at           TIMESTAMP
 updated_at           TIMESTAMP
 resolved_at          TIMESTAMP
-closed_at            TIMESTAMP
 ```
 
 ### 5. AI & Vector Search
@@ -190,14 +173,14 @@ LIMIT 10;
 ### 6. Audit & Compliance
 
 #### Complaint History
-Tracks every change to a complaint:
+Tracks every state change to a complaint:
 
 ```sql
 CREATE TABLE complaint_history (
     history_id SERIAL PRIMARY KEY,
     complaint_id INTEGER,
     changed_by INTEGER,         -- User who made change
-    change_type VARCHAR(50),    -- CREATED, UPDATED, ASSIGNED, RESOLVED
+    change_type VARCHAR(50),    -- SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED
     old_values JSONB,          -- Previous values
     new_values JSONB,          -- New values
     changed_field VARCHAR(100),
@@ -222,22 +205,6 @@ CREATE TABLE audit_logs (
     ip_address VARCHAR(45),
     user_agent TEXT,
     created_at TIMESTAMP
-);
-```
-
-#### Resolutions
-Tracks how complaints were resolved (1:1 relationship):
-
-```sql
-CREATE TABLE resolutions (
-    resolution_id SERIAL PRIMARY KEY,
-    complaint_id INTEGER UNIQUE,  -- One per complaint
-    resolved_by INTEGER,          -- Officer who resolved
-    resolution_description TEXT,  -- What was done
-    resolution_category VARCHAR(100), -- FIXED, DUPLICATE, INVALID
-    time_to_resolve INTERVAL,     -- How long it took
-    satisfaction_likely BOOLEAN,  -- AI prediction
-    resolved_at TIMESTAMP
 );
 ```
 
@@ -320,11 +287,11 @@ if "water" in complaint_text:
 Complaint → Embedding → Vector Similarity Search → RAG → LLM → Department
 ```
 
-### 4. Complaint Resolution
-- **One active resolution per complaint** (UNIQUE constraint)
-- Previous resolutions stored in complaint_history
-- Resolution category: FIXED, DUPLICATE, INVALID, etc.
-- Time to resolve tracked for metrics
+### 4. Complaint Status Tracking
+- Complaint state is kept directly in the `status` column
+- Final statuses are: SUBMITTED, ASSIGNED, IN_PROGRESS, RESOLVED, REJECTED
+- Status changes are recorded in complaint_history
+- There is no separate resolution table in the final design
 
 ### 5. Complaint Duplication
 - Automatic duplicate detection via embedding similarity
@@ -380,29 +347,22 @@ CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
 - URGENT
 
 **status (complaints):**
-- OPEN
+- SUBMITTED
 - ASSIGNED
 - IN_PROGRESS
 - RESOLVED
-- CLOSED
-- REOPENED
+- REJECTED
 
 The `ASSIGNED` value represents manual department handling from the dashboard.
 
 **change_type (complaint_history):**
-- CREATED
+- SUBMITTED
 - UPDATED
 - STATUS_CHANGED
 - ASSIGNED
+- IN_PROGRESS
 - RESOLVED
-- REOPENED
-
-**resolution_category:**
-- FIXED
-- DUPLICATE
-- INVALID
-- EXTERNAL
-- ESCALATED
+- REJECTED
 
 ## Relationships Diagram
 
@@ -419,9 +379,8 @@ The `ASSIGNED` value represents manual department handling from the dashboard.
     ROLE_PERMS                     |     |
                                    |     |
                       COMPLAINT_EMBEDDINGS
-                      
+                       
                       COMPLAINT_HISTORY
-                      RESOLUTIONS
                       AUDIT_LOGS
                       FEEDBACK
 ```
@@ -500,4 +459,3 @@ postgresql://postgres:password@localhost:5432/complaint_routing
 6. Implement RAG pipeline for knowledge base
 7. Set up vector embeddings service
 8. Configure backup schedule
-`n### Database principle`\nThe final design keeps assignment logic outside the schema and relies on complaint status plus department selection for manual handling.`n`n### Status tracking`\nAll status transitions such as ASSIGNED, IN_PROGRESS, RESOLVED, and REOPENED are stored directly in the complaints table to preserve audit history.`n`n### Frozen department rule`\nDepartments are not created or deleted dynamically. The system uses the fixed set of five departments and keeps the complaint lifecycle in status transitions.`n
