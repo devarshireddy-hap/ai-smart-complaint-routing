@@ -381,10 +381,13 @@ CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
 
 **status (complaints):**
 - OPEN
+- ASSIGNED
 - IN_PROGRESS
 - RESOLVED
 - CLOSED
 - REOPENED
+
+The `ASSIGNED` value represents manual department handling from the dashboard.
 
 **change_type (complaint_history):**
 - CREATED
