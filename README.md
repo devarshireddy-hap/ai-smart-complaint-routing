@@ -78,6 +78,9 @@ OPEN → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED
 - HIGH
 - URGENT
 
+### Manual Handling Rule
+Complaint assignment is a dashboard action. The database stores department and current complaint status instead of an assignment record.
+
 ## Project Structure
 
 ```
