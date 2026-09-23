@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
-    resolution_helpful BOOLEAN,
+    is_helpful BOOLEAN,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

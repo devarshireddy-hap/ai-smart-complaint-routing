@@ -173,7 +173,7 @@ erDiagram
         int user_id FK
         int rating
         text comment
-        boolean resolution_helpful
+        boolean is_helpful
         timestamp created_at
     }
 
