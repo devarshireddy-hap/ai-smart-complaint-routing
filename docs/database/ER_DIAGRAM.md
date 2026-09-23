@@ -241,3 +241,5 @@ BACKUP_RECORD -> ROLLBACK_RECORD
 
 The diagram can be rendered by GitHub and viewed in Mermaid-compatible tools
 such as Mermaid Live Editor.
+
+In this version, status changes like `ASSIGNED` and `IN_PROGRESS` are tracked on the complaint record itself.
