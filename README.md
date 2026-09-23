@@ -63,6 +63,8 @@ Note: departmental structure is fixed and complaint assignment is handled from t
 - OFFICER (Department staff handling complaints)
 - ADMIN (System administrators)
 
+Department-level assignment is recorded through the complaint status in the dashboard; there is no separate assignment table.
+
 ### Complaint Status Workflow
 ```
 OPEN → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED
