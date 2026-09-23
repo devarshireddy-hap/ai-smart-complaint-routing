@@ -404,3 +404,4 @@ Ready for backend team integration.
 *Project: AI Smart Complaint Routing System*  
 *Component: Database (DBMS)*  
 *Student: Devarshi Reddy (24BCB0148)*
+`n> The final schema is aligned to the manual dashboard workflow and contains 16 tables, with assignment logic handled outside the DB.`n
