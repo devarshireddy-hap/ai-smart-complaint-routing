@@ -239,4 +239,4 @@ Internal project - Team based
 ## Contact
 
 For questions or clarifications, contact the team lead.
-`n> Database note: The database branch keeps the complaint workflow in the complaint record and department fields, not in a separate assignment table.`n
+`n> Database note: The database branch keeps the complaint workflow in the complaint record and department fields, not in a separate assignment table.`n`n> Manual handling rule: the dashboard updates complaint status and department while the database stores the current state.`n
