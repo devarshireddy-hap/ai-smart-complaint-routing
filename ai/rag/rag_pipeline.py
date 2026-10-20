@@ -11,8 +11,16 @@ Complaint
 
 from typing import Dict, Optional
 
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
 from ai.rag.retriever import (
-    retrieve_rag_information,
+    retrieve_rag_information as retrieve_local_rag_information,
+)
+from ai.rag.database_retriever import (
+    retrieve_rag_information as retrieve_database_rag_information,
 )
 
 
@@ -22,6 +30,39 @@ from ai.rag.retriever import (
 
 DEFAULT_TOP_K = 5
 RAG_MODEL_NAME = "all-MiniLM-L6-v2"
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
+
+
+def retrieve_rag_information(
+    complaint: str,
+    department: Optional[str] = None,
+    top_k: int = DEFAULT_TOP_K,
+) -> Dict:
+    """Choose the local or database retriever from environment settings."""
+
+    backend = os.getenv(
+        "RAG_RETRIEVER_BACKEND", "local"
+    ).strip().lower()
+
+    if backend == "local":
+        return retrieve_local_rag_information(
+            complaint=complaint,
+            department=department,
+            top_k=top_k,
+        )
+
+    if backend == "database":
+        return retrieve_database_rag_information(
+            complaint=complaint,
+            department=department,
+            top_k=top_k,
+        )
+
+    raise ValueError(
+        "RAG_RETRIEVER_BACKEND must be 'local' or 'database'."
+    )
 
 
 # ============================================================
