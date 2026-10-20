@@ -105,6 +105,7 @@ def retrieve_similar_complaints(
             c.priority,
             c.status,
             c.resolved_at,
+            hist.resolution,
             1 - (ce.embedding_vector <=> %s) AS similarity
         FROM complaint_embeddings AS ce
         JOIN complaints AS c
@@ -113,6 +114,18 @@ def retrieve_similar_complaints(
             ON d.department_id = c.department_id
         LEFT JOIN categories AS cat
             ON cat.category_id = c.category_id
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(
+                NULLIF(h.new_values->>'resolution', ''),
+                NULLIF(h.change_description, '')
+            ) AS resolution
+            FROM complaint_history AS h
+            WHERE h.complaint_id = c.complaint_id
+              AND h.change_type = 'DATASET_IMPORT'
+              AND h.new_values->>'source_dataset' = 'data/complaints.csv'
+            ORDER BY h.history_id DESC
+            LIMIT 1
+        ) AS hist ON TRUE
         WHERE ce.embedding_vector IS NOT NULL
           AND COALESCE(c.is_duplicate, FALSE) = FALSE
     """
@@ -146,10 +159,6 @@ def retrieve_similar_complaints(
                 resolved_at.isoformat() if resolved_at else None
             )
             item["similarity"] = float(item["similarity"])
-
-            # Kept for compatibility with callers that expect this key.
-            # The current database schema has no dedicated resolution field.
-            item["resolution"] = None
 
             results.append(item)
 
