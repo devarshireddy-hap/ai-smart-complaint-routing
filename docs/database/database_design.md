@@ -140,9 +140,11 @@ USING hnsw (embedding_vector vector_cosine_ops);
 
 ```sql
 -- Find 5 most similar complaints
-SELECT complaint_id, similarity FROM complaint_embeddings
-WHERE complaint_id != NEW.complaint_id
-ORDER BY embedding_vector <-> NEW.embedding_vector
+SELECT complaint_id,
+       1 - (embedding_vector <=> :query_embedding) AS similarity
+FROM complaint_embeddings
+WHERE complaint_id <> :complaint_id
+ORDER BY embedding_vector <=> :query_embedding
 LIMIT 5;
 ```
 
@@ -164,9 +166,12 @@ CREATE TABLE knowledge_document_chunks (
 );
 
 -- Vector similarity search on knowledge base
-SELECT chunk_id, similarity FROM knowledge_document_chunks
-WHERE department_id = target_department
-ORDER BY chunk_embedding <-> query_embedding
+SELECT chunk_id, title, chunk_text,
+       1 - (chunk_embedding <=> :query_embedding) AS similarity
+FROM knowledge_document_chunks
+WHERE is_active = TRUE
+  AND department_id = :department_id
+ORDER BY chunk_embedding <=> :query_embedding
 LIMIT 10;
 ```
 
@@ -387,25 +392,27 @@ The `ASSIGNED` value represents manual department handling from the dashboard.
 
 ## Setup Instructions
 
-### 1. Create Database
+### 1. Create the database
 ```bash
 createdb complaint_routing
 ```
 
-### 2. Run Initial Schema
+### 2. Run the canonical schema
 ```bash
-psql complaint_routing < database/schema/00_init.sql
+psql -v ON_ERROR_STOP=1 complaint_routing -f database/schema/00_init.sql
 ```
 
-### 3. Seed Initial Data
+The schema enables `vector` and `"uuid-ossp"` itself. The PostgreSQL server must
+have pgvector installed; the project's Compose service uses the pgvector image.
+
+### 3. Load seed data
 ```bash
-psql complaint_routing < database/seeds/01_init_data.sql
+psql -v ON_ERROR_STOP=1 complaint_routing -f database/seeds/01_init_data.sql
 ```
 
-### 4. Enable pgvector
-```bash
-psql complaint_routing -c "CREATE EXTENSION IF NOT EXISTS pgvector;"
-```
+Do not run the other files in `database/schema` alongside `00_init.sql`; they
+contain overlapping schema definitions. Docker Compose mounts only the
+canonical schema and this seed file, in that order.
 
 ### 5. Run Migrations
 ```bash

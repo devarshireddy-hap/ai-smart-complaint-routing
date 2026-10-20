@@ -180,12 +180,24 @@ Development: `http://localhost:5000/api/v1`
    pip install -r requirements.txt
    ```
 
-3. **Database setup**
-   ```bash
-   createdb complaint_routing
-   psql complaint_routing < database/schema/init.sql
-   python scripts/seed_database.py
+3. **Configure and start the database**
+   ```powershell
+   if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+   # Edit .env and set a private DB_PASSWORD before starting services.
+   docker compose up -d postgres
+   docker compose ps
    ```
+
+   On the first startup with an empty PostgreSQL data volume, Compose runs
+   `database/schema/00_init.sql` followed by `database/seeds/01_init_data.sql`.
+   `00_init.sql` is the canonical complete schema. Do not run the other files in
+   `database/schema` as part of this initialization; they are overlapping
+   standalone/older schema fragments.
+
+   PostgreSQL initialization scripts run only when the data directory is empty.
+   If the `postgres_data` volume already exists, these mounts will not apply the
+   schema or seeds again; inspect the existing database and use an appropriate
+   migration rather than deleting the volume.
 
 4. **Frontend setup**
    ```bash
@@ -193,11 +205,16 @@ Development: `http://localhost:5000/api/v1`
    npm install
    ```
 
-5. **Environment configuration**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
+5. **Start the application**
+   ```powershell
+   docker compose up -d
    ```
+
+   From the host machine, the database is available at `localhost:5432`.
+   Containers in this Compose project should connect to `postgres:5432`.
+   Keep `.env` private and do not commit real credentials. If the database
+   password contains reserved URL characters, URL-encode it when using
+   `DATABASE_URL`.
 
 ## Important Notes
 

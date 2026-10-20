@@ -11,7 +11,7 @@
 
 ### 1. Project Structure
 ✅ Complete folder structure created matching the finalized documentation  
-✅ All 16 tables designed and implemented
+✅ 15 tables defined in the canonical schema
 ✅ Database schema split into logical files  
 ✅ Seeds and initialization data prepared  
 
@@ -136,8 +136,10 @@ User → Role → Permissions
 ### 4. Semantic AI Routing
 ```sql
 -- Vector embeddings for similarity search
-SELECT similar_complaints FROM complaint_embeddings
-ORDER BY embedding_vector <-> new_complaint_embedding
+SELECT complaint_id,
+       1 - (embedding_vector <=> :query_embedding) AS similarity
+FROM complaint_embeddings
+ORDER BY embedding_vector <=> :query_embedding
 LIMIT 5;
 ```
 **Constraint**: No keyword-based routing allowed
@@ -221,7 +223,7 @@ SQLALCHEMY_DATABASE_URI = 'postgresql://user:password@localhost/complaint_routin
 
 3. **Enable pgvector**
    ```bash
-   psql complaint_routing -c "CREATE EXTENSION pgvector;"
+   psql complaint_routing -c "CREATE EXTENSION IF NOT EXISTS vector;"
    ```
 
 4. **Run Schema Initialization**
@@ -374,7 +376,7 @@ SUBMITTED → ASSIGNED → IN_PROGRESS → RESOLVED
 
 | Metric | Value |
 |--------|-------|
-| Tables | 16 |
+| Tables | 15 |
 | Columns | 150+ |
 | Indexes | 25+ |
 | Constraints | 40+ |
@@ -391,7 +393,7 @@ SUBMITTED → ASSIGNED → IN_PROGRESS → RESOLVED
 ## Completion Checklist ✅
 
 - [x] Database schema designed and implemented
-- [x] All 16 tables created with proper relationships
+- [x] All 15 canonical tables created with proper relationships
 - [x] Soft delete implementation for users
 - [x] Frozen departments enforcement
 - [x] Vector search setup with pgvector

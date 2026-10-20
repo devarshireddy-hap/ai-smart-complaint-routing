@@ -38,7 +38,7 @@ Based on the "Misleads & Final Frozen Things" chat:
 ### ✅ Complete Documentation
 - Database design guide (14KB+)
 - Implementation summary with checklist
-- SQL scripts for all 16 tables
+- Canonical SQL schema defining 15 tables
 - Seed data for initial setup
 
 ### ✅ Version Control
@@ -92,11 +92,11 @@ README.md                     ← Project overview
 # 1. Create database
 createdb complaint_routing
 
-# 2. Run schema initialization (THIS IS THE MAIN FILE)
-psql complaint_routing < database/schema/00_init.sql
+# 2. Run the canonical schema (includes extension setup)
+psql -v ON_ERROR_STOP=1 complaint_routing -f database/schema/00_init.sql
 
 # 3. Seed initial data
-psql complaint_routing < database/seeds/01_init_data.sql
+psql -v ON_ERROR_STOP=1 complaint_routing -f database/seeds/01_init_data.sql
 
 # 4. Verify setup
 psql complaint_routing -c "SELECT COUNT(*) FROM departments;"
@@ -106,17 +106,15 @@ psql complaint_routing -c "SELECT COUNT(*) FROM departments;"
 ### Using Docker
 
 ```bash
-# Create .env file from .env.example
-cp .env.example .env
+# Create .env if missing, then set a private DB_PASSWORD
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
-# Start PostgreSQL with Docker Compose
-docker-compose up -d postgres
+# Start PostgreSQL; on an empty data volume, Compose applies the canonical
+# schema first and the seed file second.
+docker compose up -d postgres
 
-# Wait for database to be ready
-docker-compose up postgres
-
-# In another terminal, run schema
-docker exec complaint-routing-db psql -U postgres -d complaint_routing -f /docker-entrypoint-initdb.d/00_init.sql
+# Check readiness
+docker compose ps
 ```
 
 ---
@@ -243,7 +241,7 @@ Department Prediction (TECHNICAL, FINANCE, etc.)
 
 1. **Database Schema**
    - Show: database/schema/00_init.sql
-   - Explain: All 16 tables and relationships
+   - Explain: All 15 canonical tables and relationships
    - Mention: Soft delete, frozen departments, audit logging
 
 2. **Practical Demo**
@@ -316,7 +314,7 @@ git push origin develop
 ### Issue: pgvector not installed
 ```bash
 # Solution: Install in PostgreSQL
-psql complaint_routing -c "CREATE EXTENSION pgvector;"
+psql complaint_routing -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ### Issue: Permission denied on schema file
@@ -332,12 +330,10 @@ sudo systemctl start postgresql  # Linux
 # or use PostgreSQL GUI (Windows)
 ```
 
-### Issue: Tables already exist
-```bash
-# Solution: Drop and recreate
-psql complaint_routing -c "DROP SCHEMA public CASCADE;"
-# Then run init.sql again
-```
+### Issue: Initialization scripts did not run
+The PostgreSQL image runs initialization scripts only when its data directory is
+empty. For an existing database, inspect its current schema and apply a reviewed
+migration; do not delete the volume or drop the schema to force initialization.
 
 ---
 
@@ -345,7 +341,7 @@ psql complaint_routing -c "DROP SCHEMA public CASCADE;"
 
 | Metric | Count |
 |--------|-------|
-| Tables | 16 |
+| Tables | 15 |
 | Columns | 150+ |
 | Constraints | 40+ |
 | Indexes | 25+ |
@@ -364,7 +360,7 @@ psql complaint_routing -c "DROP SCHEMA public CASCADE;"
 ## Final Checklist ✅
 
 - [x] Database schema designed and implemented
-- [x] All 16 tables created with relationships
+- [x] All 15 canonical tables defined with relationships
 - [x] Primary keys, foreign keys, constraints
 - [x] Indexes for performance
 - [x] Triggers for automation
