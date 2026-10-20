@@ -3,8 +3,8 @@
 -- Tech Stack: PostgreSQL 15+ with pgvector extension
 
 -- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS pgvector;
-CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================================
 -- 1. USERS TABLE
@@ -112,7 +112,7 @@ FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE SET 
 -- Complaint assignment is managed manually in the dashboard through the complaint status and department fields.
 CREATE TABLE IF NOT EXISTS complaints (
     complaint_id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
+    user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS rollback_records (
 CREATE TABLE IF NOT EXISTS feedback (
     feedback_id SERIAL PRIMARY KEY,
     complaint_id INTEGER NOT NULL REFERENCES complaints(complaint_id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
+    user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
     is_helpful BOOLEAN,

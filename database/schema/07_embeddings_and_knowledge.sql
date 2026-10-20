@@ -1,3 +1,4 @@
+-- Legacy schema fragment; do not run with the canonical database/schema/00_init.sql.
 -- NEW TABLE: COMPLAINT_EMBEDDINGS
 -- Corrected: One embedding per complaint using sentence-transformers/all-MiniLM-L6-v2
 -- Dimension: 384 (fixed)
@@ -15,7 +16,7 @@ CREATE TABLE IF NOT EXISTS complaint_embeddings (
 );
 
 -- Create HNSW index for fast similarity search (requires pgvector)
--- This allows fast vector similarity queries using <-> operator
+-- Use the cosine-distance <=> operator to match vector_cosine_ops.
 CREATE INDEX idx_complaint_embeddings_vector ON complaint_embeddings 
 USING hnsw (embedding_vector vector_cosine_ops);
 
