@@ -1,0 +1,3 @@
+﻿psycopg2-binary==2.9.13
+pgvector==0.5.1
+python-dotenv
