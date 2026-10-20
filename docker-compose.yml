@@ -7,18 +7,19 @@ services:
     container_name: complaint-routing-db
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_NAME:-complaint_routing}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema:/docker-entrypoint-initdb.d
+      - ./database/schema/00_init.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seeds/01_init_data.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     networks:
       - complaint-routing-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-complaint_routing}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,7 +50,7 @@ services:
     container_name: complaint-routing-backend
     environment:
       FLASK_ENV: ${FLASK_ENV:-development}
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-complaint_routing}
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/${DB_NAME:-complaint_routing}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
