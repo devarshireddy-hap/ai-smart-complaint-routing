@@ -114,6 +114,24 @@ docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT CO
 
 The counts should be greater than zero after both ingestion commands complete. The complaint retriever only uses resolved historical records that have resolution text; knowledge retrieval uses active departmental chunks.
 
+## Deploy to Render
+
+The root `render.yaml` Blueprint defines a Render PostgreSQL database, the Flask API, and the React static site. It targets the `full-stack` branch and the Free/test tier selected for this initial deployment. Free Render Postgres is temporary and expires after 30 days; do not use it for important or durable complaint data. Choose a paid database plan before real production use.
+
+1. Sign in to Render, choose **New + > Blueprint**, and connect `devarshireddy-hap/ai-smart-complaint-routing` on the `full-stack` branch.
+2. Review the three resources before applying the Blueprint. The API creates the canonical schema, seeds reference data, and applies the compatibility migration on startup; this is safe for an empty database and checks before touching an existing one.
+3. Wait for the API health check (`/api/v1/health`) and frontend deploy to succeed. The frontend discovers the API host through the Blueprint, and the API derives its allowed frontend origin from the static-site host.
+4. For Google sign-in, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the API service's Render environment. Add this callback URI to the Google OAuth client, replacing the host with the deployed API host:
+
+   ```text
+   https://<api-host>.onrender.com/api/v1/auth/google/callback
+   ```
+
+   Keep `ENABLE_GEMINI=false` unless Gemini is intentionally enabled and `GEMINI_API_KEY` is configured. Never put production secrets in Git or chat.
+5. Register your account, then open the API service's Render Shell and run `python -m backend.seed_admin` to promote it to the first administrator. Keep database connection strings private and do not commit local database backups.
+
+The Blueprint generates separate random Flask and JWT secrets and enables secure cookies. Local `.env` values are not used by Render. Before importing existing data, back up the source database and follow a deliberate migration plan; this deployment creates a separate Render database and does not upload the local backup.
+
 ## Local development without the full container stack
 
 For Python backend tests, use the isolated SQLite test configuration:

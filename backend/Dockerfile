@@ -15,4 +15,4 @@ COPY backend ./backend
 COPY database ./database
 COPY data ./data
 EXPOSE 5000
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 4 --timeout 120 backend.app:app"]
+CMD ["sh", "-c", "python -m database.initialize && exec gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 4 --timeout 120 backend.app:app"]

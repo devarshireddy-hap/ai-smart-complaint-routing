@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import psycopg2
+from sqlalchemy.engine import make_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,9 @@ def initialize_database() -> None:
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL is required to initialize PostgreSQL.")
+    database_url = make_url(database_url).set(drivername="postgresql").render_as_string(
+        hide_password=False
+    )
 
     with psycopg2.connect(database_url, connect_timeout=10) as connection:
         with connection.cursor() as cursor:
