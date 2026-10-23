@@ -1,0 +1,13 @@
+FINANCE KNOWLEDGE BASE
+
+Fee and Payment:
+Verify the student's payment details, transaction reference, fee record, and payment status.
+
+Billing Issues:
+Check the billing record and compare the reported amount with the official fee information.
+
+Refund Request:
+Verify the original transaction, refund eligibility, and required approval before processing a refund.
+
+Scholarship and Financial Aid:
+Verify the student's financial-aid record and supporting information before escalating the request.

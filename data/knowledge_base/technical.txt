@@ -1,0 +1,12 @@
+TECHNICAL KNOWLEDGE BASE
+
+Internet Connectivity:
+For network or internet complaints, identify the affected building, room, device, or network segment.
+
+Computer Hardware:
+For hardware issues, identify the affected device and determine whether the problem is physical or operational.
+
+Software Support:
+For software-related complaints, identify the application, error, operating environment, and steps that caused the issue.
+
+Technical complaints should be assigned to the technical support team for diagnosis and resolution.
