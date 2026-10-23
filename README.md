@@ -121,10 +121,10 @@ The root `render.yaml` Blueprint defines a Render PostgreSQL database, the Flask
 1. Sign in to Render, choose **New + > Blueprint**, and connect `devarshireddy-hap/ai-smart-complaint-routing` on the `full-stack` branch.
 2. Review the three resources before applying the Blueprint. The API creates the canonical schema, seeds reference data, and applies the compatibility migration on startup; this is safe for an empty database and checks before touching an existing one.
 3. Wait for the API health check (`/api/v1/health`) and frontend deploy to succeed. The frontend discovers the API host through the Blueprint, and the API derives its allowed frontend origin from the static-site host.
-4. For Google sign-in, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the API service's Render environment. Add this callback URI to the Google OAuth client, replacing the host with the deployed API host:
+4. For Google sign-in, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the API service's Render environment. Add this exact callback URI to the Google OAuth client's **Authorized redirect URIs**:
 
    ```text
-   https://<api-host>.onrender.com/api/v1/auth/google/callback
+   https://campuscare-api-dqr6.onrender.com/api/v1/auth/google/callback
    ```
 
    Keep `ENABLE_GEMINI=false` unless Gemini is intentionally enabled and `GEMINI_API_KEY` is configured. Never put production secrets in Git or chat.
