@@ -1,96 +1,99 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database with pgvector
   postgres:
-    image: pgvector/pgvector:pg15-latest
-    container_name: complaint-routing-db
+    image: pgvector/pgvector:pg15
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_NAME:-complaint_routing}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema/00_init.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./database/seeds/01_init_data.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
-    networks:
-      - complaint-routing-network
+      - ./database/migrations/001_auth_password_and_feedback.sql:/docker-entrypoint-initdb.d/03_app_migration.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-complaint_routing}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
-  # Redis Cache (Optional)
-  redis:
-    image: redis:7-alpine
-    container_name: complaint-routing-cache
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - complaint-routing-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    profiles:
-      - with-cache
-
-  # Flask Backend API
-  backend:
+  api:
+    restart: unless-stopped
     build:
       context: .
-      dockerfile: ./docker/backend.Dockerfile
-    container_name: complaint-routing-backend
+      dockerfile: backend/Dockerfile
     environment:
-      FLASK_ENV: ${FLASK_ENV:-development}
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/${DB_NAME:-complaint_routing}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
+      APP_ENV: ${APP_ENV:-development}
+      PORT: 5000
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-postgres}:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/${DB_NAME:-complaint_routing}
+      SECRET_KEY: ${SECRET_KEY:-local-development-secret-change-before-deploy}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-jwt-secret-change-before-deploy}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      JWT_COOKIE_SAMESITE: ${JWT_COOKIE_SAMESITE:-Lax}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      ENABLE_GEMINI: ${ENABLE_GEMINI:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "5000:5000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./backend:/app/backend
-      - ./ai:/app/ai
-      - ./logs:/app/logs
-    networks:
-      - complaint-routing-network
-    command: flask run --host=0.0.0.0 --port=5000
+      - model_cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/v1/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  # React Frontend
   frontend:
+    restart: unless-stopped
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: complaint-routing-frontend
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1
-      REACT_APP_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
     ports:
-      - "3000:3000"
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  ingest-knowledge:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    profiles: ["ingest"]
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/${DB_NAME:-complaint_routing}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      - ./frontend/src:/app/src
-    networks:
-      - complaint-routing-network
-    stdin_open: true
-    tty: true
+      - model_cache:/root/.cache/huggingface
+    command: ["python", "-m", "ai.rag.knowledge_ingestion", "--write-to-database"]
+
+  ingest-complaints:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    profiles: ["ingest"]
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/${DB_NAME:-complaint_routing}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "ai.rag.historical_complaint_ingestion", "--write-to-database"]
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-
-networks:
-  complaint-routing-network:
-    driver: bridge
+  model_cache:

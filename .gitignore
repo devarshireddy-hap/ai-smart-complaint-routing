@@ -72,9 +72,6 @@ yarn-error.log
 .env.test.local
 .env.production.local
 
-# Docker
-.dockerignore
-
 # Logs
 logs/
 *.log
@@ -91,7 +88,6 @@ coverage.xml
 
 # AI/ML models
 models/
-embeddings/
 *.pkl
 *.pth
 
