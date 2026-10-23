@@ -8,7 +8,9 @@ import {
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL
-  || (import.meta.env.VITE_API_HOST ? `https://${import.meta.env.VITE_API_HOST}/api/v1` : "http://localhost:5000/api/v1");
+  || (import.meta.env.VITE_API_ORIGIN
+    ? `${import.meta.env.VITE_API_ORIGIN.replace(/\/$/, "")}/api/v1`
+    : "http://localhost:5000/api/v1");
 const DEPARTMENTS = ["TECHNICAL", "FINANCE", "ELECTRICAL", "PLUMBING", "SECURITY"];
 const STATUS_LABELS = {
   SUBMITTED: "Submitted", ASSIGNED: "Assigned", IN_PROGRESS: "In progress",

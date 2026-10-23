@@ -33,9 +33,15 @@ services:
       - key: JWT_COOKIE_SAMESITE
         value: Lax
       - key: FRONTEND_URL
-        value: https://campuscare-frontend-hnh9.onrender.com
+        fromService:
+          type: web
+          name: campuscare-frontend
+          envVarKey: RENDER_EXTERNAL_URL
       - key: CORS_ORIGINS
-        value: https://campuscare-frontend-hnh9.onrender.com
+        fromService:
+          type: web
+          name: campuscare-frontend
+          envVarKey: RENDER_EXTERNAL_URL
       - key: ENABLE_GEMINI
         value: "false"
 
@@ -48,11 +54,11 @@ services:
     staticPublishPath: dist
     autoDeploy: true
     envVars:
-      - key: VITE_API_HOST
+      - key: VITE_API_ORIGIN
         fromService:
           type: web
           name: campuscare-api
-          property: host
+          envVarKey: RENDER_EXTERNAL_URL
     routes:
       - type: rewrite
         source: /*
