@@ -49,8 +49,9 @@ services:
     name: campuscare-frontend
     runtime: static
     branch: full-stack
+    rootDir: frontend
     buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
+    staticPublishPath: dist
     autoDeploy: true
     envVars:
       - key: VITE_API_HOST
