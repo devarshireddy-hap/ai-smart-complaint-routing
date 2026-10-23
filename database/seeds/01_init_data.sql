@@ -22,6 +22,8 @@ INSERT INTO permissions (permission_name, description, module) VALUES
     ('complaint.assign', 'Assign complaint to officer', 'complaints'),
     ('complaint.analyze', 'Run AI analysis on complaint', 'complaints'),
     ('complaint.resolve', 'Mark complaint as resolved', 'complaints'),
+    ('complaint.reopen', 'Reopen a resolved complaint', 'complaints'),
+    ('feedback.create', 'Submit complaint feedback', 'complaints'),
     
     -- User permissions
     ('user.read', 'View user information', 'users'),
@@ -51,7 +53,10 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.role_id, p.permission_id FROM roles r, permissions p
 WHERE r.role_name = 'CITIZEN' 
-  AND p.permission_name IN ('complaint.create', 'complaint.read', 'user.read', 'user.update', 'department.read')
+  AND p.permission_name IN (
+    'complaint.create', 'complaint.read', 'complaint.reopen',
+    'feedback.create', 'user.read', 'department.read'
+  )
 ON CONFLICT DO NOTHING;
 
 -- OFFICER role permissions

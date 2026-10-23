@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(256),
     phone VARCHAR(20),
     user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('STUDENT', 'FACULTY', 'WORKING_STAFF')),
     department_id INTEGER,
@@ -189,7 +190,8 @@ CREATE TABLE IF NOT EXISTS knowledge_document_chunks (
     metadata JSONB,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (document_id, chunk_index)
 );
 
 CREATE INDEX idx_knowledge_chunks_department_id ON knowledge_document_chunks(department_id);
