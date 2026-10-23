@@ -20,6 +20,7 @@ from flask_jwt_extended import (
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from sqlalchemy import func, inspect, text
+from sqlalchemy.engine import make_url
 from werkzeug.security import check_password_hash, generate_password_hash
 from dotenv import load_dotenv
 
@@ -437,6 +438,13 @@ def _public_url(value):
     return value if "://" in value else f"https://{value}"
 
 
+def _sqlalchemy_database_url(value):
+    database_url = make_url(value)
+    if database_url.drivername == "postgresql":
+        database_url = database_url.set(drivername="postgresql+psycopg2")
+    return database_url.render_as_string(hide_password=False)
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     load_dotenv(PROJECT_ROOT / ".env")
@@ -448,9 +456,11 @@ def create_app(test_config=None):
         raise RuntimeError("SECRET_KEY must be configured in production.")
     app.config.update(
         SECRET_KEY=secret_key or "development-only-change-this-secret",
-        SQLALCHEMY_DATABASE_URI=os.getenv(
-            "DATABASE_URL",
-            "sqlite:///" + str(Path(app.instance_path) / "complaints.db").replace("\\", "/"),
+        SQLALCHEMY_DATABASE_URI=_sqlalchemy_database_url(
+            os.getenv(
+                "DATABASE_URL",
+                "sqlite:///" + str(Path(app.instance_path) / "complaints.db").replace("\\", "/"),
+            )
         ),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         APP_ENV=os.getenv("APP_ENV", "development").lower(),

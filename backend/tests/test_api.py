@@ -2,11 +2,17 @@ import unittest
 from unittest.mock import Mock, patch
 
 from flask import redirect
-from backend.app import create_app
+from sqlalchemy.engine import make_url
+
+from backend.app import _sqlalchemy_database_url, create_app
 from backend.models import AuditLog, Complaint, ComplaintHistory, Department, Role, User, db
 
 
 class AuthenticationAuthorizationTests(unittest.TestCase):
+    def test_postgresql_urls_use_the_installed_psycopg2_driver(self):
+        database_url = _sqlalchemy_database_url("postgresql://user:pass@db.example/app")
+        self.assertEqual(make_url(database_url).drivername, "postgresql+psycopg2")
+
     def setUp(self):
         self.app = create_app({
             "TESTING": True,
