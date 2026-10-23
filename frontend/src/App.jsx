@@ -14,15 +14,29 @@ const STATUS_LABELS = {
   RESOLVED: "Resolved", CLOSED: "Closed", REOPENED: "Reopened",
 };
 
-function csrfToken() {
-  const match = document.cookie.match(/(?:^|; )csrf_access_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : "";
+async function fetchCsrfToken() {
+  // The API and frontend use different hostnames, so document.cookie on the
+  // frontend cannot read the API's csrf_access_token cookie. Ask the API for
+  // the CSRF claim from the current JWT instead.
+  const response = await fetch(`${API_BASE}/auth/csrf`, {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  const contentType = response.headers.get("content-type") || "";
+  const result = contentType.includes("application/json") ? await response.json() : {};
+  if (!response.ok || !result.csrf_token) {
+    throw new Error(result.error || result.msg || "Could not obtain a CSRF token. Please sign in again.");
+  }
+  return result.csrf_token;
 }
 
 async function api(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = { ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-TOKEN"] = csrfToken();
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !["/auth/login", "/auth/register"].includes(path)) {
+    headers["X-CSRF-TOKEN"] = await fetchCsrfToken();
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     method,
@@ -274,7 +288,7 @@ function App() {
 
   const downloadBackup = async (backup) => {
     try {
-      const response = await fetch(`${API_BASE}/admin/backups/${backup.id}/download`, { credentials: "include", headers: { "X-CSRF-TOKEN": csrfToken() } });
+      const response = await fetch(`${API_BASE}/admin/backups/${backup.id}/download`, { credentials: "include", headers: { Accept: "application/octet-stream" } });
       if (!response.ok) {
         const result = await response.json();
         throw new Error(result.error || "Backup download failed.");

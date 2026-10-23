@@ -14,6 +14,7 @@ from flask_cors import CORS
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
+    get_jwt,
     get_jwt_identity,
     jwt_required,
     set_access_cookies,
@@ -500,6 +501,13 @@ def create_app(test_config=None):
     @jwt_required()
     def me():
         return jsonify({"user": _user_for_identity().to_dict()})
+
+    @app.get("/api/v1/auth/csrf")
+    @jwt_required()
+    def csrf_token():
+        # Safe GET endpoint: return the CSRF claim from the current access JWT.
+        # The frontend cannot read cookies set by the API's separate hostname.
+        return jsonify({"csrf_token": get_jwt()["csrf"]})
 
     @app.post("/api/v1/auth/logout")
     @jwt_required()
@@ -1052,9 +1060,10 @@ def create_app(test_config=None):
     return app
 
 
-app = create_app()
+app = None
 
 if __name__ == "__main__":
+    app = create_app()
     logging.basicConfig(level=logging.INFO)
     app.run(
         host=os.getenv("HOST", "127.0.0.1"),
