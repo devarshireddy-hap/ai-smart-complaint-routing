@@ -1,258 +1,149 @@
-# AI Smart Complaint Routing System
+# CampusCare — Smart Complaint Routing
 
-AI-powered smart complaint routing and resolution system using RAG, vector search, RBAC, and manual dashboard-based complaint tracking.
+CampusCare is a full-stack campus complaint application with email/password and optional Google sign-in, role-based access, AI-assisted department/category/priority suggestions, pgvector retrieval, complaint tracking, and audit history.
 
-## Project Overview
+## Stack and structure
 
-This system automates complaint routing across multiple departments using:
-- **Semantic AI routing** (no keyword matching)
-- **RAG (Retrieval-Augmented Generation)** for intelligent suggestions
-- **Vector search** with pgvector for similarity matching
-- **Role-Based Access Control (RBAC)** for authorization
-- **Google SSO** for authentication
-- **Audit logs** for compliance
+- **Frontend:** React 18, Vite, Nginx
+- **API:** Flask, SQLAlchemy, Flask-JWT-Extended
+- **Database:** PostgreSQL 15 with pgvector
+- **AI:** `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional vectors); optional Google Gemini suggestions require explicit user consent
+- **Database schema:** `database/schema/00_init.sql` is canonical; `database/seeds/01_init_data.sql` provides roles, permissions, departments, and starter categories
 
-## Tech Stack
-
-### Backend
-- **Language**: Python 3.11+
-- **Framework**: Flask
-- **ORM**: SQLAlchemy
-- **Authentication**: Google OAuth 2.0
-- **Vector Processing**: sentence-transformers
-- **LLM Integration**: Google Gemini API
-
-### Database
-- **Primary DB**: PostgreSQL 15+
-- **Vector Extension**: pgvector
-- **Caching** (optional): Redis
-
-### Frontend
-- **Framework**: React
-- **State Management**: Redux/Context API
-- **Styling**: Tailwind CSS / Material-UI
-
-### AI/ML
-- **Embeddings**: sentence-transformers/all-MiniLM-L6-v2 (384 dimensions)
-- **RAG Framework**: LangChain
-- **Vector Search**: pgvector
-
-### DevOps
-- **Containerization**: Docker + Docker Compose
-- **Version Control**: Git + GitHub
-- **CI/CD** (optional): GitHub Actions
-
-## Fixed System Values
-
-### Departments (Frozen - Cannot be created/deleted)
-- TECHNICAL
-- FINANCE
-- ELECTRICAL
-- PLUMBING
-- SECURITY
-
-Note: departmental structure is fixed and complaint assignment is handled from the dashboard using complaint status.
-
-### User Types
-- STUDENT
-- FACULTY
-- WORKING_STAFF
-
-### System Roles
-- CITIZEN (Users submitting complaints)
-- OFFICER (Department staff handling complaints)
-- ADMIN (System administrators)
-
-Department-level assignment is recorded through the complaint status in the dashboard; there is no separate assignment table.
-
-### Complaint Status Workflow
-```
-SUBMITTED → ASSIGNED → IN_PROGRESS → RESOLVED
-                                ↓
-                             REJECTED
+```text
+backend/                 Flask API, ORM mappings, admin bootstrap, API tests
+ai/                      Embeddings, routing, RAG retrieval and ingestion
+database/schema/         Canonical schema plus historical schema fragments
+database/seeds/          Idempotent reference data
+database/migrations/     Small forward migrations for existing databases
+data/                    Sample complaint CSV and departmental guidance
+frontend/                React/Vite interface and Nginx configuration
+docker-compose.yml       Local PostgreSQL, API, frontend, optional ingestion jobs
 ```
 
-### Priority Levels
-- LOW
-- MEDIUM
-- HIGH
-- URGENT
+The complaint statuses are `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, and `REJECTED`. Resolution details are stored in `complaint_history`; there is no separate resolutions table. Historical complaint and knowledge embeddings use 384-dimensional cosine vectors.
 
-### Manual Handling Rule
-Complaint assignment is a dashboard action. The database stores department and the current complaint status only; there is no separate resolution table.
+## Run locally with Docker Desktop
 
-## Project Structure
+### 1. Prerequisites
 
-```
-ai-smart-complaint-routing/
-│
-├── backend/                    # Flask backend
-│   ├── app.py
-│   ├── config.py
-│   ├── routes/                 # API endpoints
-│   ├── services/               # Business logic
-│   ├── middleware/             # Auth, authorization, audit
-│   ├── models/                 # Database models (SQLAlchemy)
-│   └── utils/                  # Helpers, validators, logger
-│
-├── frontend/                   # React frontend
-│   ├── package.json
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   └── App.jsx
-│   └── public/
-│
-├── ai/                         # AI/RAG components
-│   ├── embeddings/             # Embedding generation
-│   ├── rag/                    # RAG pipeline
-│   ├── routing/                # Department/priority prediction
-│   └── prompts/                # LLM prompts
-│
-├── database/                   # Database scripts
-│   ├── schema/                 # Table definitions
-│   ├── migrations/
-│   ├── seeds/                  # Initial data
-│   ├── functions/              # Stored procedures
-│   ├── triggers/               # Database triggers
-│   ├── indexes/                # Optimization indexes
-│   ├── views/                  # Database views
-│   └── backup/                 # Backup/restore scripts
-│
-├── docs/                       # Documentation
-│   ├── requirements/
-│   ├── architecture/
-│   ├── database/
-│   ├── api/
-│   ├── security/
-│   ├── ai/
-│   ├── database_operations/
-│   └── publication/
-│
-├── tests/                      # Test suite
-│   ├── backend/
-│   ├── database/
-│   ├── ai/
-│   └── integration/
-│
-├── docker/                     # Docker configurations
-│   ├── backend.Dockerfile
-│   ├── frontend.Dockerfile
-│   └── database.Dockerfile
-│
-├── scripts/                    # Utility scripts
-│   ├── setup_database.py
-│   ├── seed_database.py
-│   └── generate_test_data.py
-│
-├── .env.example                # Environment variables template
-├── .gitignore
-├── requirements.txt            # Python dependencies
-├── docker-compose.yml          # Multi-container setup
-└── README.md                   # This file
+- Docker Desktop installed and running (the Compose command must be available in PowerShell)
+- At least 8 GB of available memory recommended for the embedding model and containers
+
+### 2. Configure local secrets
+
+From the repository root in PowerShell:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+notepad .env
 ```
 
-## API Base URL
+Change `DB_PASSWORD` to a long, URL-safe password using letters and numbers. Set `SECRET_KEY` and `JWT_SECRET_KEY` to different random values. The default values in `docker-compose.yml` are development-only; do not use them for a deployed environment. Keep `.env` private and never commit it.
 
-Development: `http://localhost:5000/api/v1`
+Google OAuth is optional for local startup. To enable it, add the client ID and secret to `.env`, then add this exact authorized redirect URI to the Google OAuth client:
 
-## Quick Start
-
-### Prerequisites
-- Python 3.11+
-- PostgreSQL 15+
-- Node.js 18+
-- Docker (optional)
-
-### Setup Instructions
-
-1. **Clone repository**
-   ```bash
-   git clone https://github.com/devarshireddy-hap/ai-smart-complaint-routing.git
-   cd ai-smart-complaint-routing
-   ```
-
-2. **Backend setup**
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate  # Windows
-   pip install -r requirements.txt
-   ```
-
-3. **Configure and start the database**
-   ```powershell
-   if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-   # Edit .env and set a private DB_PASSWORD before starting services.
-   docker compose up -d postgres
-   docker compose ps
-   ```
-
-   On the first startup with an empty PostgreSQL data volume, Compose runs
-   `database/schema/00_init.sql` followed by `database/seeds/01_init_data.sql`.
-   `00_init.sql` is the canonical complete schema. Do not run the other files in
-   `database/schema` as part of this initialization; they are overlapping
-   standalone/older schema fragments.
-
-   PostgreSQL initialization scripts run only when the data directory is empty.
-   If the `postgres_data` volume already exists, these mounts will not apply the
-   schema or seeds again; inspect the existing database and use an appropriate
-   migration rather than deleting the volume.
-
-4. **Frontend setup**
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-5. **Start the application**
-   ```powershell
-   docker compose up -d
-   ```
-
-   From the host machine, the database is available at `localhost:5432`.
-   Containers in this Compose project should connect to `postgres:5432`.
-   Keep `.env` private and do not commit real credentials. If the database
-   password contains reserved URL characters, URL-encode it when using
-   `DATABASE_URL`.
-
-## Important Notes
-
-### No Keyword-Based Routing
-❌ DO NOT implement rules like:
-```python
-if "water" in complaint.text:
-    department = PLUMBING
+```text
+http://localhost:3000/api/v1/auth/google/callback
 ```
 
-✅ DO implement semantic analysis:
+Gemini is also optional and disabled by default. To enable it, set `ENABLE_GEMINI=true` and provide `GEMINI_API_KEY`; the UI requests consent before sending complaint text to Gemini.
+
+### 3. Build and start the local stack
+
+```powershell
+docker compose up --build -d
+docker compose ps
+docker compose logs --tail 100 postgres api frontend
 ```
-Complaint → Embedding (384-dim) → Vector Similarity Search → Historical Complaints → RAG → LLM → Department
+
+On a new, empty `postgres_data` volume, Docker initializes the database in this order:
+
+1. `database/schema/00_init.sql` — canonical schema and pgvector indexes
+2. `database/seeds/01_init_data.sql` — starter roles, permissions, departments, and categories
+3. `database/migrations/001_auth_password_and_feedback.sql` — idempotent application compatibility migration
+
+Do not run the other files under `database/schema/`; they are overlapping, older schema fragments. PostgreSQL runs initialization files only when its data directory is empty. If you already have a volume, do **not** delete it to fix startup problems. Apply the migration explicitly and inspect the existing schema first:
+
+```powershell
+docker compose exec -T postgres psql -U postgres -d complaint_routing -f /docker-entrypoint-initdb.d/03_app_migration.sql
 ```
 
-### User Deletion Policy
-- Users are NEVER physically deleted
-- Use `is_active = FALSE` for soft delete
-- Historical records remain intact
-- Essential for audit trail and compliance
+If you changed `DB_USER` or `DB_NAME` in `.env`, use those values in the `psql` command.
 
-### Department Management
-- The 5 departments are FROZEN and immutable
-- Cannot create new departments
-- Cannot delete existing departments
-- Admins can only manage categories under departments
+### 4. Verify the services and database
 
-## Timeline
+The local app is at [http://localhost:3000](http://localhost:3000); the API health check is [http://localhost:5000/api/v1/health](http://localhost:5000/api/v1/health).
 
-- **Phase 1** (Week 1): Database setup, authentication, API foundation
-- **Phase 2** (Weeks 1-2): Backend API, AI/RAG integration
-- **Phase 3** (Week 2): Frontend, full integration
-- **Phase 4** (Week 2.5): Testing, documentation, deployment
+```powershell
+Invoke-RestMethod http://localhost:5000/api/v1/health
+docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT extname FROM pg_extension WHERE extname = 'vector';"
+docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT indexname, indexdef FROM pg_indexes WHERE indexname IN ('idx_complaint_embeddings_vector', 'idx_knowledge_chunks_embedding');"
+```
 
-## License
+Expected results include API status `ok`, extension `vector`, all 15 canonical tables, and HNSW indexes using `vector_cosine_ops`. The API checks required columns, the two `vector(384)` columns, vector indexes, and reference data during startup; a schema mismatch stops startup with a specific error.
 
-Internal project - Team based
+### 5. Create the first administrator
 
-## Contact
+Register a normal account in the UI, then bootstrap that account as the initial administrator:
 
-For questions or clarifications, contact the team lead.
+```powershell
+docker compose exec api python -m backend.seed_admin
+```
+
+Enter the email used during registration and a strong password. Sign out and sign back in to refresh the account's role. Administrators can promote users to department officers from **People & access**.
+
+### 6. Load sample RAG data (optional but recommended)
+
+The seeded database does not contain complaint history or knowledge chunks. These commands calculate embeddings and write the provided sample dataset and departmental guidance to PostgreSQL. The first embedding-model download can take a few minutes. The API image installs CPU-only PyTorch; local AI inference does not require downloading NVIDIA CUDA libraries.
+
+```powershell
+docker compose run --rm ingest-knowledge
+docker compose run --rm ingest-complaints
+```
+
+Both importers are safe to rerun: knowledge chunks are replaced by source document, and historical complaints and embeddings are updated by source complaint ID. To inspect the process without writing data, run the scripts without `--write-to-database` from a Python environment with project dependencies installed.
+
+Check the imported vector data:
+
+```powershell
+docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT COUNT(*) AS chunks, COUNT(chunk_embedding) AS embedded_chunks FROM knowledge_document_chunks;"
+docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT COUNT(*) AS complaints, COUNT(embedding_vector) AS embedded_complaints FROM complaint_embeddings;"
+```
+
+The counts should be greater than zero after both ingestion commands complete. The complaint retriever only uses resolved historical records that have resolution text; knowledge retrieval uses active departmental chunks.
+
+## Local development without the full container stack
+
+For Python backend tests, use the isolated SQLite test configuration:
+
+```powershell
+$env:APP_ENV = "test"
+$env:DATABASE_URL = "sqlite://"
+python -m unittest backend.tests.test_api
+```
+
+For frontend-only development, keep the API running and use:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+The Vite dev server uses `frontend/.env.example`'s local API URL. For Google sign-in, set `FRONTEND_URL=http://localhost:5173` in the root `.env` and use `GOOGLE_REDIRECT_URI=http://localhost:5000/api/v1/auth/google/callback`. The same callback works in Docker because the API is exposed on port 5000. This URI must exactly match an authorized redirect URI in Google Cloud. The Docker stack builds the frontend and API as separate services; Nginx serves the frontend and proxies `/api/` requests to Flask.
+
+The first screen offers Student, Admin, and Department portals. Department users can create an account request, but it remains a Citizen account until an administrator assigns the Officer role and selected department in **People & access**. Admin access must be provisioned by an administrator. Department staff select their department at sign-in, and the API checks it against the account's assigned department. The admin table shows the effective portal type (Student, Department, or Admin); department requests are marked pending until approved. Complaints are routed to the AI-selected or explicitly selected department and appear in that department's queue, regardless of whether a student or admin submitted them. Admin account deletion anonymizes and disables the account while preserving complaint and audit history. The latest role/department or active-state change can be rolled back from **People & access** or **System activity**. Earlier changes can only be undone after newer changes are rolled back; anonymized deletions are not reversible. Complaint lists, dashboard summaries, and admin data refresh after changes, when the window regains focus, and every 30 seconds while open.
+
+## Troubleshooting
+
+- **`docker` is not recognized:** Start or install Docker Desktop, wait for its engine to become ready, then open a new PowerShell window and retry `docker compose version`.
+- **API exits with a database schema error:** Check `docker compose logs api postgres`, confirm initialization completed, and apply the migration to an existing volume rather than deleting it.
+- **PostgreSQL password authentication fails:** Ensure `.env` uses a URL-safe `DB_PASSWORD` and that the Compose containers were created with the same value.
+- **Admin page is forbidden:** Bootstrap an administrator with `python -m backend.seed_admin`, then sign out and back in.
+- **AI is in local matching mode:** Confirm the embedding model has downloaded and check API logs. The complaint workflow remains usable without Gemini; database vector retrieval requires the ingestion commands to have populated embeddings.
+
+## Backup and persistence
+
+The Compose `postgres_data` volume persists the database across container restarts. `docker compose down` keeps it. Do not use `docker compose down -v` unless you intentionally want to destroy the local database and all imported data. Automated file-based backup/restore is not supported for PostgreSQL; use PostgreSQL backup tools for operational backups.
