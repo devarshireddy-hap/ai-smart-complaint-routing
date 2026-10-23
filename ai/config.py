@@ -1,3 +1,11 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+
 #============================================================
 # API CONFIGURATION
 # ============================================================
@@ -100,7 +108,7 @@ ENABLE_DUPLICATE_DETECTION = True
 ENABLE_RAG = True
 ENABLE_AI_FEEDBACK = True
 ENABLE_AI_EXPLANATION = True
-ENABLE_LLM = True
+ENABLE_LLM = os.getenv("ENABLE_LLM", "false").lower() == "true"
 USE_LLM_FALLBACK = True
 
 

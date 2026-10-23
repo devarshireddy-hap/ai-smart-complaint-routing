@@ -3,3 +3,10 @@
 !.env.example
 __pycache__/
 *.py[cod]
+instance/
+*.sqlite
+*.sqlite3
+node_modules/
+frontend/dist/
+.venv/
+venv/

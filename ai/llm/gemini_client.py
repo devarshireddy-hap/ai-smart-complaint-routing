@@ -1,30 +1,19 @@
-"""
-Gemini LLM client.
-
-This module sends the RAG-grounded prompt to Gemini
-and returns the generated complaint resolution.
-"""
-
 import os
+from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
 
 
-load_dotenv()
-
-API_KEY = os.getenv("GEMINI_API_KEY")
-
-if not API_KEY:
-    raise ValueError(
-        "GEMINI_API_KEY is not set. "
-        "Add it to your .env file."
-    )
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
+MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
 
 
-client = genai.Client(api_key=API_KEY)
-
-MODEL_NAME = "gemini-3.8-flash"
+@lru_cache(maxsize=4)
+def _client(api_key):
+    return genai.Client(api_key=api_key)
 
 
 def generate_resolution(prompt: str) -> str:
@@ -37,12 +26,17 @@ def generate_resolution(prompt: str) -> str:
             "prompt must be a non-empty string."
         )
 
-    response = client.interactions.create(
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is required when Gemini generation is enabled.")
+    response = _client(api_key).models.generate_content(
         model=MODEL_NAME,
-        input=prompt,
+        contents=prompt,
     )
-
-    return response.output_text.strip()
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("Gemini returned an empty resolution suggestion.")
+    return text
 
 
 if __name__ == "__main__":

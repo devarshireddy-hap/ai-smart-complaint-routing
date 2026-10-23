@@ -21,6 +21,7 @@ from ai.prompts.resolution_prompt import (
 )
 
 from ai.llm.gemini_client import (
+    MODEL_NAME,
     generate_resolution,
 )
 
@@ -29,7 +30,7 @@ from ai.llm.gemini_client import (
 # MODEL
 # ============================================================
 
-RAG_MODEL_NAME = "gemini-3.8-flash"
+RAG_MODEL_NAME = MODEL_NAME
 
 # Prevent repeated API calls after a quota/rate-limit failure
 LLM_AVAILABLE = True
