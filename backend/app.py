@@ -432,6 +432,11 @@ def _internal_error_response(error):
     return jsonify({"error": "Internal server error."}), 500
 
 
+def _public_url(value):
+    value = value.strip().rstrip("/")
+    return value if "://" in value else f"https://{value}"
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     load_dotenv(PROJECT_ROOT / ".env")
@@ -465,7 +470,7 @@ def create_app(test_config=None):
         GOOGLE_CLIENT_SECRET=os.getenv("GOOGLE_CLIENT_SECRET"),
         GOOGLE_REDIRECT_URI=os.getenv("GOOGLE_REDIRECT_URI", "").strip(),
         ENABLE_GEMINI=os.getenv("ENABLE_GEMINI", "false").lower() == "true",
-        FRONTEND_URL=(
+        FRONTEND_URL=_public_url(
             os.getenv("FRONTEND_URL")
             or os.getenv("RENDER_EXTERNAL_URL")
             or "http://localhost:5173"
@@ -490,7 +495,7 @@ def create_app(test_config=None):
     db.init_app(app)
     JWTManager(app)
     cors_origins = [
-        origin.strip()
+        _public_url(origin)
         for origin in os.getenv("CORS_ORIGINS", app.config["FRONTEND_URL"]).split(",")
         if origin.strip()
     ]
