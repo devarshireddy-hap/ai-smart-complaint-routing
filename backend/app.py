@@ -1052,10 +1052,9 @@ def create_app(test_config=None):
     return app
 
 
-app = None
+app = create_app()
 
 if __name__ == "__main__":
-    app = create_app()
     logging.basicConfig(level=logging.INFO)
     app.run(
         host=os.getenv("HOST", "127.0.0.1"),
