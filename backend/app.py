@@ -641,9 +641,7 @@ def create_app(test_config=None):
         return jsonify({"user": _user_for_identity().to_dict()})
 
     @app.post("/api/v1/auth/logout")
-    @jwt_required()
     def logout():
-        _user_for_identity()
         response = jsonify({"message": "Signed out."})
         unset_jwt_cookies(response)
         return response

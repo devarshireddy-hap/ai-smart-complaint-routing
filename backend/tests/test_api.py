@@ -37,6 +37,15 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["status"], "ok")
 
+    def test_logout_clears_cookies_even_without_an_access_token(self):
+        response = self.client.post("/api/v1/auth/logout")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["message"], "Signed out.")
+        self.assertTrue(any(
+            cookie.startswith("access_token_cookie=") and "Expires=Thu, 01 Jan 1970" in cookie
+            for cookie in response.headers.getlist("Set-Cookie")
+        ))
+
     def test_registration_always_creates_citizen(self):
         response = self.client.post("/api/v1/auth/register", json={
             "full_name": "Test Student",
