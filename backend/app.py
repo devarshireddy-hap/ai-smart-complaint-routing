@@ -358,9 +358,14 @@ def create_app(test_config=None):
         raise RuntimeError("SECRET_KEY must be configured in production.")
     app.config.update(
         SECRET_KEY=secret_key or "development-only-change-this-secret",
-        SQLALCHEMY_DATABASE_URI=os.getenv(
-            "DATABASE_URL",
-            "sqlite:///" + str(Path(app.instance_path) / "complaints.db").replace("\\", "/"),
+        
+        SQLALCHEMY_DATABASE_URI=(
+            os.getenv(
+                "DATABASE_URL",
+                "sqlite:///" + str(Path(app.instance_path) / "complaints.db").replace("\\", "/"),
+            )
+            .replace("postgres://", "postgresql+psycopg2://", 1)
+            .replace("postgresql://", "postgresql+psycopg2://", 1)
         ),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         APP_ENV=os.getenv("APP_ENV", "development").lower(),
@@ -712,6 +717,63 @@ def create_app(test_config=None):
         ).all()
         return jsonify({"history": [item.to_dict() for item in items]})
 
+    @app.patch("/api/v1/complaints/<complaint_id>/transfer")
+    @_permission_required("complaint:update_department")
+    def transfer_complaint(complaint_id):
+        complaint = _complaint_or_404(complaint_id)
+
+        if g.user.role.name != "OFFICER":
+            abort(403, description="Only officers can transfer complaints.")
+
+        if not g.user.department or g.user.department != complaint.department:
+            abort(403, description="You can only transfer complaints in your department.")
+
+        body = _json_object()
+        destination = str(body.get("department", "")).strip().upper()
+        reason = str(body.get("reason", "")).strip()
+
+        if not destination:
+            abort(400, description="Destination department is required.")
+
+        if len(reason) < 10:
+            abort(400, description="Transfer reason must be at least 10 characters.")
+
+        if destination == complaint.department:
+            abort(400, description="Choose a different destination department.")
+
+        target_department = Department.query.filter_by(name=destination).first()
+        if target_department is None:
+            abort(400, description="Destination department does not exist.")
+
+        before = _history_state(complaint)
+        old_department = complaint.department
+
+        complaint.department = destination
+        complaint.assigned_to_id = None
+
+        _record_history(
+            complaint,
+            g.user,
+            "DEPARTMENT_TRANSFERRED",
+            before,
+            f"Transferred from {old_department} to {destination}. Reason: {reason}",
+        )
+
+        _record_audit(
+            g.user,
+            "COMPLAINT_DEPARTMENT_TRANSFERRED",
+            "complaint",
+            complaint.id,
+            {
+                "old_department": old_department,
+                "new_department": destination,
+                "reason": reason,
+            },
+        )
+
+        db.session.commit()
+        return jsonify({"complaint": complaint.to_dict()})
+
     @app.patch("/api/v1/complaints/<complaint_id>/status")
     @_permission_required("complaint:read_own")
         
@@ -990,10 +1052,10 @@ def create_app(test_config=None):
     return app
 
 
-app = create_app()
-
+app = None
 
 if __name__ == "__main__":
+    app = create_app()
     logging.basicConfig(level=logging.INFO)
     app.run(
         host=os.getenv("HOST", "127.0.0.1"),
