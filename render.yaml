@@ -33,15 +33,9 @@ services:
       - key: JWT_COOKIE_SAMESITE
         value: Lax
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: campuscare-frontend
-          property: host
+        value: https://campuscare-frontend-hnh9.onrender.com
       - key: CORS_ORIGINS
-        fromService:
-          type: web
-          name: campuscare-frontend
-          property: host
+        value: https://campuscare-frontend-hnh9.onrender.com
       - key: ENABLE_GEMINI
         value: "false"
 
