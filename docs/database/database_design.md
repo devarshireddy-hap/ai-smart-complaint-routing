@@ -50,7 +50,7 @@ Users → Roles → Permissions
 **Roles:**
 - `ADMIN` - Full system access
 - `OFFICER` - Department staff, can handle complaints
-- `CITIZEN` - Users submitting complaints
+- `USER` - Users submitting complaints
 
 **Permission Categories:**
 - Complaint management (CRUD, assign, analyze, resolve)

@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import shutil
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -21,7 +22,7 @@ from flask_jwt_extended import (
 from werkzeug.middleware.proxy_fix import ProxyFix
 from sqlalchemy import func, inspect, text
 from sqlalchemy.engine import make_url
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 from dotenv import load_dotenv
 
 from backend.ai_service import (
@@ -56,7 +57,7 @@ DEPARTMENT_INFO = {
 }
 
 PERMISSIONS = {
-    "CITIZEN": {
+    "USER": {
         "complaint.create",
         "complaint.read",
         "complaint.reopen",
@@ -97,30 +98,56 @@ PERMISSIONS = {
 HISTORY_FIELDS = ("status", "department", "category_id", "priority")
 
 
+def _is_vit_email(email):
+    domain = email.rpartition("@")[2]
+    return bool(re.fullmatch(r"vit[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ac\.in", domain))
+
+
+def _normalized_role(role_name):
+    return "USER" if role_name == "CITIZEN" else role_name
+
+
 def _record_audit(actor, action, resource_type, resource_id=None, details=None, old_values=None):
-    db.session.add(AuditLog(
+    event = AuditLog(
         actor_id=actor.id,
         action=action,
         resource_type=resource_type,
         resource_id=resource_id,
         details=details or {},
         old_values=old_values,
-    ))
+    )
+    db.session.add(event)
+    return event
 
 
 def _history_state(complaint):
     return {field: getattr(complaint, field) for field in HISTORY_FIELDS}
 
 
+def _set_complaint_department(complaint, department):
+    previous_category = complaint.category_record
+    complaint.department_record = department
+    complaint.category_record = (
+        Category.query.filter_by(
+            department_id=department.id,
+            name=previous_category.name,
+        ).first()
+        if previous_category
+        else None
+    )
+
+
 def _record_history(complaint, actor, action, before_state=None, note=""):
-    db.session.add(ComplaintHistory(
+    event = ComplaintHistory(
         complaint_id=complaint.id,
         actor_id=actor.id,
         action=action,
         before_state=before_state,
         after_state=_history_state(complaint),
         note=note,
-    ))
+    )
+    db.session.add(event)
+    return event
 
 
 def _validate_postgres_schema():
@@ -149,7 +176,10 @@ def _validate_postgres_schema():
         },
         "audit_logs": {"log_id", "user_id", "action", "resource_type", "resource_id", "new_values"},
         "backup_records": {"backup_id", "backup_name", "created_by", "backup_type"},
-        "rollback_records": {"rollback_id", "backup_id", "initiated_by", "status"},
+        "rollback_records": {
+            "rollback_id", "backup_id", "initiated_by", "status",
+            "reversed_history_id", "rollback_history_id",
+        },
         "feedback": {"feedback_id", "complaint_id", "user_id", "rating", "comment"},
     }
     inspector = inspect(db.engine)
@@ -234,7 +264,7 @@ def _validate_postgres_schema():
                 f"Missing or incorrect cosine HNSW vector index: {index_name}."
             )
 
-    required_roles = {"ADMIN", "OFFICER", "CITIZEN"}
+    required_roles = {"ADMIN", "OFFICER", "USER"}
     roles = {role.name for role in Role.query.all()}
     if not required_roles.issubset(roles):
         raise RuntimeError(
@@ -561,76 +591,21 @@ def create_app(test_config=None):
 
     @app.post("/api/v1/auth/register")
     def register():
-        body = _json_object()
-        if not isinstance(body.get("email"), str) or not isinstance(body.get("full_name"), str):
-            abort(400, description="Enter your name and email address.")
-        email = body["email"].strip().lower()
-        full_name = body["full_name"].strip()
-        password = body.get("password", "")
-        portal = body.get("portal")
-        department = str(body.get("department", "")).upper()
-        if portal is not None and (
-            not isinstance(portal, str) or portal not in {"student", "department"}
-        ):
-            abort(400, description="Choose Student or Department account registration.")
-        if portal == "department" and department not in DEPARTMENT_INFO:
-            abort(400, description="Choose a valid department.")
-        user_type = (
-            "WORKING_STAFF" if portal == "department"
-            else "STUDENT" if portal == "student"
-            else str(body.get("user_type", "STUDENT")).upper()
-        )
-        allowed_types = {"STUDENT", "FACULTY", "WORKING_STAFF"}
-        if len(full_name) < 2 or len(full_name) > 120:
-            abort(400, description="Name must contain 2 to 120 characters.")
-        if "@" not in email or len(email) > 254:
-            abort(400, description="Enter a valid email address.")
-        if not isinstance(password, str) or len(password) < 10 or len(password) > 128:
-            abort(400, description="Password must contain 10 to 128 characters.")
-        if user_type not in allowed_types:
-            abort(400, description="Choose a valid account type.")
-        if User.query.filter_by(email=email).first():
-            abort(409, description="An account with that email already exists.")
-        citizen_role = Role.query.filter_by(name="CITIZEN").one()
-        user = User(
-            email=email,
-            full_name=full_name,
-            password_hash=generate_password_hash(password, method="scrypt"),
-            user_type=user_type,
-            role=citizen_role,
-        )
-        db.session.add(user)
-        if portal == "department":
-            user.department = department
-        db.session.flush()
-        _record_audit(user, "ACCOUNT_REGISTERED", "user", user.id)
-        db.session.commit()
-        response = jsonify({"user": user.to_dict()})
-        response.status_code = 201
-        set_access_cookies(response, create_access_token(identity=str(user.id)))
-        return response
+        abort(403, description="User and department accounts must use Google sign-in.")
 
     @app.post("/api/v1/auth/login")
     def login():
         body = _json_object()
         email = str(body.get("email", "")).strip().lower()
         password = body.get("password", "")
+        portal = body.get("portal")
+        if portal is not None and portal != "admin":
+            abort(403, description="User and department accounts must use Google sign-in.")
         user = User.query.filter_by(email=email).first()
         if user is None or not user.is_active or not user.password_hash or not check_password_hash(user.password_hash, password if isinstance(password, str) else ""):
             abort(401, description="Email or password is incorrect.")
-        portal = body.get("portal")
-        if portal is not None:
-            expected_roles = {"student": "CITIZEN", "admin": "ADMIN", "department": "OFFICER"}
-            if not isinstance(portal, str) or portal not in expected_roles:
-                abort(400, description="Choose a valid portal.")
-            if user.role is None or user.role.name != expected_roles[portal]:
-                abort(403, description="This account does not have access to the selected portal.")
-            if portal == "department":
-                department = str(body.get("department", "")).upper()
-                if department not in DEPARTMENT_INFO:
-                    abort(400, description="Choose a valid department.")
-                if user.department != department:
-                    abort(403, description="This account is not assigned to the selected department.")
+        if user.role is None or user.role.name != "ADMIN":
+            abort(403, description="User and department accounts must use Google sign-in.")
         response = jsonify({"user": user.to_dict()})
         set_access_cookies(response, create_access_token(identity=str(user.id)))
         return response
@@ -654,10 +629,16 @@ def create_app(test_config=None):
         if portal is not None:
             if portal not in {"student", "admin", "department"}:
                 abort(400, description="Choose a valid portal.")
+            if portal == "admin":
+                abort(403, description="Administrator sign-in uses email and password.")
             department = request.args.get("department", "").upper()
             if portal == "department" and department not in DEPARTMENT_INFO:
                 abort(400, description="Choose a valid department.")
-            session["portal_intent"] = {"portal": portal, "department": department}
+            session["portal_intent"] = {
+                "portal": portal,
+                "department": department,
+                "registration": request.args.get("mode") == "register",
+            }
         else:
             session.pop("portal_intent", None)
         callback = app.config["GOOGLE_REDIRECT_URI"] or url_for("google_callback", _external=True)
@@ -683,6 +664,8 @@ def create_app(test_config=None):
 
         if not subject or not email or not profile.get("email_verified"):
             abort(401, description="Google did not return a verified email address.")
+        if not _is_vit_email(email):
+            abort(403, description="Use a verified VIT Google account with an .ac.in email address.")
 
         # Find an account already linked to this Google identity.
         user = User.query.filter_by(google_subject=subject).first()
@@ -693,22 +676,33 @@ def create_app(test_config=None):
 
         # Create a new account when this Google email is not registered.
         if user is None:
-            if portal_intent and portal_intent["portal"] != "student":
-                abort(403, description="An existing account with the selected portal access is required.")
-            citizen_role = Role.query.filter_by(name="CITIZEN").one()
+            if portal_intent and portal_intent["portal"] == "admin":
+                abort(403, description="Administrator sign-in uses email and password.")
+            if portal_intent and portal_intent["portal"] == "department" and not portal_intent["registration"]:
+                abort(403, description="Submit a department access request before signing in.")
+            user_role = Role.query.filter_by(name="USER").one()
+            department_signup = bool(portal_intent and portal_intent["portal"] == "department")
 
             user = User(
                 email=email,
                 full_name=str(profile.get("name") or email.split("@")[0])[:120],
-                user_type="STUDENT",
-                role=citizen_role,
+                user_type="WORKING_STAFF" if department_signup else "STUDENT",
+                role=user_role,
                 google_subject=subject,
                 is_active=True,
             )
             db.session.add(user)
+            if department_signup:
+                user.department = portal_intent["department"]
             db.session.flush()
 
-            _record_audit(user, "GOOGLE_SIGN_IN", "user", user.id)
+            _record_audit(
+                user,
+                "DEPARTMENT_ACCESS_REQUESTED" if department_signup else "GOOGLE_SIGN_IN",
+                "user",
+                user.id,
+                {"department": user.department} if department_signup else None,
+            )
 
         else:
             # Do not allow a disabled existing account to sign in.
@@ -716,12 +710,34 @@ def create_app(test_config=None):
                 db.session.rollback()
                 abort(403, description="This account is disabled.")
 
+            if user.role and user.role.name == "ADMIN":
+                abort(403, description="Administrator sign-in uses email and password.")
+
             if portal_intent:
-                expected_roles = {"student": "CITIZEN", "admin": "ADMIN", "department": "OFFICER"}
+                expected_roles = {"student": "USER", "admin": "ADMIN", "department": "OFFICER"}
                 if user.role is None or user.role.name != expected_roles[portal_intent["portal"]]:
-                    abort(403, description="This account does not have access to the selected portal.")
-                if portal_intent["portal"] == "department" and user.department != portal_intent["department"]:
+                    is_pending_department_request = (
+                        portal_intent["portal"] == "department"
+                        and portal_intent["registration"]
+                        and user.user_type == "WORKING_STAFF"
+                        and user.role is not None
+                        and user.role.name == "USER"
+                        and user.department == portal_intent["department"]
+                    )
+                    if not is_pending_department_request:
+                        abort(403, description="This account does not have access to the selected portal.")
+                if (
+                    portal_intent["portal"] == "department"
+                    and user.role.name == "OFFICER"
+                    and user.department != portal_intent["department"]
+                ):
                     abort(403, description="This account is not assigned to the selected department.")
+                if (
+                    portal_intent["portal"] == "department"
+                    and user.role.name == "USER"
+                    and not portal_intent["registration"]
+                ):
+                    abort(403, description="Your department access request is still awaiting administrator approval.")
 
             # Prevent linking an account to a different Google identity.
             if user.google_subject and user.google_subject != subject:
@@ -737,8 +753,20 @@ def create_app(test_config=None):
 
         db.session.commit()
 
-        response = redirect(app.config["FRONTEND_URL"])
-        set_access_cookies(response, create_access_token(identity=str(user.id)))
+        department_request_pending = bool(
+            portal_intent
+            and portal_intent["portal"] == "department"
+            and user.role
+            and user.role.name == "USER"
+            and user.user_type == "WORKING_STAFF"
+        )
+        response = redirect(
+            f"{app.config['FRONTEND_URL']}/?department_request=pending"
+            if department_request_pending
+            else app.config["FRONTEND_URL"]
+        )
+        if not department_request_pending:
+            set_access_cookies(response, create_access_token(identity=str(user.id)))
         return response
 
     @app.post("/api/v1/ai/analyze")
@@ -749,9 +777,10 @@ def create_app(test_config=None):
         if len(text) < 15 or len(text) > 5000:
             abort(400, description="Describe the issue in 15 to 5,000 characters.")
         requested_department = str(body.get("department", "")).upper()
-        if requested_department and requested_department not in DEPARTMENT_INFO:
+        if requested_department not in DEPARTMENT_INFO:
             abort(400, description="Choose one of the five supported departments.")
-        result = analyze_complaint(text, requested_department or None)
+        result = analyze_complaint(text, requested_department)
+        result["department"] = requested_department
         embedding = generate_embedding(text)
         _apply_database_ai_context(result, embedding)
         result["external_ai_available"] = app.config["ENABLE_GEMINI"]
@@ -769,7 +798,7 @@ def create_app(test_config=None):
     @_permission_required("complaint.read")
     def list_complaints():
         query = Complaint.query
-        if g.user.role.name == "CITIZEN":
+        if g.user.role.name == "USER":
             query = query.filter_by(reporter_id=g.user.id)
         elif g.user.role.name == "OFFICER":
             if not g.user.department:
@@ -806,12 +835,12 @@ def create_app(test_config=None):
         if allow_external_ai and not app.config["ENABLE_GEMINI"]:
             abort(400, description="External AI generation is not enabled.")
         requested_department = str(body.get("department", "")).upper()
-        if requested_department and requested_department not in DEPARTMENT_INFO:
+        if requested_department not in DEPARTMENT_INFO:
             abort(400, description="Choose one of the five supported departments.")
-        ai_result = analyze_complaint(description, requested_department or None)
+        ai_result = analyze_complaint(description, requested_department)
+        ai_result["department"] = requested_department
         embedding = generate_embedding(f"{title} {description}")
         _apply_database_ai_context(ai_result, embedding)
-        requested_department = requested_department or ai_result["department"]
         ai_result["external_ai_used"] = False
         if allow_external_ai:
             external_resolution, external_warning = generate_external_resolution(description, ai_result)
@@ -904,6 +933,72 @@ def create_app(test_config=None):
         ).all()
         return jsonify({"history": [item.to_dict() for item in items]})
 
+    @app.patch("/api/v1/admin/complaints/<int:complaint_id>/department")
+    @_permission_required("admin.access")
+    def reassign_complaint_department(complaint_id):
+        complaint = db.session.get(Complaint, complaint_id)
+        if complaint is None:
+            abort(404, description="Complaint not found.")
+        body = _json_object()
+        department_name = str(body.get("department", "")).strip().upper()
+        if department_name not in DEPARTMENT_INFO:
+            abort(400, description="Choose one of the five supported departments.")
+        department = Department.query.filter_by(name=department_name).one_or_none()
+        if department is None:
+            abort(500, description="The configured department reference data is incomplete.")
+
+        before = _history_state(complaint)
+        _set_complaint_department(complaint, department)
+        _record_history(
+            complaint,
+            g.user,
+            "DEPARTMENT_REASSIGNED",
+            before,
+            f"Department changed from {before['department']} to {department_name}.",
+        )
+        _record_audit(
+            g.user,
+            "COMPLAINT_DEPARTMENT_REASSIGNED",
+            "complaint",
+            complaint.id,
+            {"from": before["department"], "to": department_name},
+            old_values=before,
+        )
+        db.session.commit()
+        return jsonify({"complaint": complaint.to_dict()})
+
+    @app.delete("/api/v1/admin/complaints/<int:complaint_id>")
+    @_permission_required("complaint.delete")
+    def delete_complaint(complaint_id):
+        complaint = db.session.get(Complaint, complaint_id)
+        if complaint is None:
+            abort(404, description="Complaint not found.")
+        details = {
+            "reference": complaint.reference,
+            "title": complaint.title,
+            "status": complaint.status,
+        }
+        _record_audit(g.user, "COMPLAINT_DELETED", "complaint", complaint.id, details)
+        history_ids = [
+            item[0]
+            for item in db.session.query(ComplaintHistory.id)
+            .filter_by(complaint_id=complaint.id)
+            .all()
+        ]
+        if history_ids:
+            RollbackRecord.query.filter(
+                RollbackRecord.reversed_history_id.in_(history_ids)
+            ).update({"reversed_history_id": None}, synchronize_session=False)
+            RollbackRecord.query.filter(
+                RollbackRecord.rollback_history_id.in_(history_ids)
+            ).update({"rollback_history_id": None}, synchronize_session=False)
+        ComplaintHistory.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        ComplaintEmbedding.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        Feedback.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        db.session.delete(complaint)
+        db.session.commit()
+        return jsonify({"message": f"{details['reference']} was deleted."})
+
     @app.patch("/api/v1/complaints/<complaint_id>/status")
     @_permission_required("complaint.update")
     def update_status(complaint_id):
@@ -949,7 +1044,7 @@ def create_app(test_config=None):
             department = Department.query.filter_by(name=requested_department).one_or_none()
             if department is None:
                 abort(500, description="The configured department reference data is incomplete.")
-            complaint.department_id = department.id
+            _set_complaint_department(complaint, department)
         if new_status == "ASSIGNED" and not complaint.department_id:
             abort(400, description="Choose a department before assigning the complaint.")
         complaint.status = new_status
@@ -994,7 +1089,7 @@ def create_app(test_config=None):
     def dashboard():
         query = Complaint.query
         officer_scope_applied = False
-        if g.user.role.name == "CITIZEN":
+        if g.user.role.name == "USER":
             query = query.filter_by(reporter_id=g.user.id)
         elif g.user.role.name == "OFFICER":
             query = query.join(
@@ -1064,8 +1159,8 @@ def create_app(test_config=None):
             abort(404, description="User not found.")
         body = _json_object()
         role_name = str(body.get("role", "")).upper()
-        if role_name not in {"CITIZEN", "OFFICER", "ADMIN"}:
-            abort(400, description="Role must be Citizen, Officer, or Admin.")
+        if role_name not in {"USER", "OFFICER", "ADMIN"}:
+            abort(400, description="Role must be User, Officer, or Admin.")
         if target.id == g.user.id and role_name != "ADMIN":
             abort(400, description="You cannot remove your own administrator access.")
         department = str(body.get("department", "")).upper()
@@ -1188,14 +1283,14 @@ def create_app(test_config=None):
                 and item.resource_type == "user"
                 and item.action == "USER_ROLE_UPDATED"
                 and item.details
-                and item.details.get("from") in {"CITIZEN", "ADMIN"}
+                and item.details.get("from") in {"USER", "CITIZEN", "ADMIN"}
             ):
-                rollback_state = {"role": item.details["from"], "department": None}
+                rollback_state = {"role": _normalized_role(item.details["from"]), "department": None}
             target = users_by_id.get(item.resource_id)
             current_state_matches = False
             if target and item.action == "USER_ROLE_UPDATED" and item.details:
                 current_state_matches = (
-                    item.details.get("to") == (target.role.name if target.role else None)
+                    _normalized_role(item.details.get("to")) == _normalized_role(target.role.name if target.role else None)
                     and (
                         "department" not in item.details
                         or item.details.get("department") == target.department
@@ -1244,20 +1339,21 @@ def create_app(test_config=None):
             not previous_values
             and event.action == "USER_ROLE_UPDATED"
             and event.details
-            and event.details.get("from") in {"CITIZEN", "ADMIN"}
+            and event.details.get("from") in {"USER", "CITIZEN", "ADMIN"}
         ):
-            previous_values = {"role": event.details["from"], "department": None}
+            previous_values = {"role": _normalized_role(event.details["from"]), "department": None}
         if not previous_values:
             abort(400, description="This audit event does not contain enough prior state to roll back safely.")
 
         if event.action == "USER_ROLE_UPDATED":
             old_role = previous_values.get("role")
-            if old_role not in {"CITIZEN", "OFFICER", "ADMIN"}:
+            old_role = _normalized_role(old_role)
+            if old_role not in {"USER", "OFFICER", "ADMIN"}:
                 abort(409, description="The previous account role is unavailable.")
             old_department = previous_values.get("department")
             if old_role == "OFFICER" and old_department not in DEPARTMENT_INFO:
                 abort(409, description="The previous officer department is unavailable.")
-            if event.details.get("to") != (target.role.name if target.role else None):
+            if _normalized_role(event.details.get("to")) != _normalized_role(target.role.name if target.role else None):
                 abort(409, description="The user's role has changed since this audit event.")
             if "department" in event.details and event.details.get("department") != target.department:
                 abort(409, description="The user's department has changed since this audit event.")
@@ -1313,9 +1409,12 @@ def create_app(test_config=None):
             abort(404, description="Complaint not found.")
         body = _json_object()
         history_id = body.get("history_id")
-        if not isinstance(history_id, str):
+        if isinstance(history_id, bool) or not (
+            isinstance(history_id, int) and history_id > 0
+            or isinstance(history_id, str) and history_id.isdecimal()
+        ):
             abort(400, description="history_id must identify a complaint history event.")
-        history = db.session.get(ComplaintHistory, history_id)
+        history = db.session.get(ComplaintHistory, int(history_id))
         if history is None or history.complaint_id != complaint.id or not history.before_state:
             abort(400, description="Choose a reversible history event for this complaint.")
         latest_history = ComplaintHistory.query.filter_by(
@@ -1326,16 +1425,39 @@ def create_app(test_config=None):
         before_rollback = _history_state(complaint)
         for field in HISTORY_FIELDS:
             setattr(complaint, field, history.before_state[field])
-        _record_history(complaint, g.user, "ADMIN_ROLLBACK", before_rollback, f"Reversed history event {history.id}.")
+        rollback_history = _record_history(
+            complaint,
+            g.user,
+            "ADMIN_ROLLBACK",
+            before_rollback,
+            f"Reversed history event {history.id}.",
+        )
+        db.session.flush()
+        _record_audit(
+            g.user,
+            "COMPLAINT_ROLLED_BACK",
+            "complaint",
+            complaint.id,
+            {
+                "reversed_history_id": history.id,
+                "rollback_history_id": rollback_history.id,
+            },
+        )
+        db.session.flush()
         db.session.add(RollbackRecord(
             actor_id=g.user.id,
             status="COMPLETED",
             reason=f"Reversed complaint history event {history.id}.",
+            reversed_history_id=history.id,
+            rollback_history_id=rollback_history.id,
             completed_at=datetime.now(timezone.utc),
         ))
-        _record_audit(g.user, "COMPLAINT_ROLLED_BACK", "complaint", complaint.id, {"history_id": history.id})
         db.session.commit()
-        return jsonify({"complaint": complaint.to_dict()})
+        return jsonify({
+            "complaint": complaint.to_dict(),
+            "reversed_activity_id": history.id,
+            "rollback_activity_id": rollback_history.id,
+        })
 
     @app.get("/api/v1/admin/backups")
     @_permission_required("backup.manage")

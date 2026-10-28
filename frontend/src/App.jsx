@@ -17,6 +17,36 @@ const STATUS_LABELS = {
   RESOLVED: "Resolved", REJECTED: "Rejected",
 };
 
+const reassignDepartment = async (complaintId, department) => {
+  setBusy(true);
+  try {
+    const result = await api(`/admin/complaints/${complaintId}/department`, {
+      method: "PATCH",
+      body: JSON.stringify({ department }),
+    });
+    setSelected(result.complaint);
+    setNotice(`${result.complaint.reference} moved to ${department.toLowerCase()}.`);
+    await refresh();
+    await refreshSelected();
+  } catch (requestError) {
+    setError(requestError.message);
+  } finally {
+    setBusy(false);
+  }
+};
+
+const deleteComplaint = async (complaint) => {
+  if (!window.confirm(`Permanently delete ${complaint.reference}? Its complaint history, feedback, and embedding will also be deleted. This cannot be undone.`)) return;
+  try {
+    await api(`/admin/complaints/${complaint.id}`, { method: "DELETE" });
+    setSelected(null);
+    setNotice(`${complaint.reference} was deleted.`);
+    await refresh();
+  } catch (requestError) {
+    setError(requestError.message);
+  }
+};
+
 function csrfToken() {
   const match = document.cookie.match(/(?:^|; )csrf_access_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : "";
@@ -68,13 +98,20 @@ function AuthScreen({ onSignedIn, initialError }) {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [form, setForm] = useState({ full_name: "", email: "", password: "", user_type: "STUDENT" });
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("department_request") === "pending") {
+      setMessage("Your department access request was submitted. An administrator must approve it before you can access the department portal.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+  useEffect(() => {
     api("/auth/options").then((result) => setGoogleEnabled(result.google_enabled)).catch((requestError) => setError(requestError.message));
   }, []);
   useEffect(() => setError(initialError || ""), [initialError]);
   const update = (event) => setForm({ ...form, [event.target.name]: event.target.value });
   const choosePortal = (nextPortal) => {
     setPortal(nextPortal);
-    if (nextPortal !== "student") setMode("login");
+    setMode("login");
     setMessage("");
   };
   const submit = async (event) => {
@@ -115,7 +152,7 @@ function AuthScreen({ onSignedIn, initialError }) {
           <div className="visual-card">
             <div className="visual-card-top"><span className="pulse-dot" /> LIVE ROUTING PREVIEW <span className="visual-code">AI / 01</span></div>
             <p>“Water is leaking near the east residence hall.”</p>
-            <div className="route-preview"><span className="route-icon"><Wrench size={15} /></span><span><b>Plumbing</b><small>Department match · High priority</small></span><span className="route-confidence">94%</span></div>
+            <div className="route-preview"><span className="route-icon"><Wrench size={15} /></span><span><b>Plumbing</b><small>Selected department · High priority</small></span><span className="route-confidence">94%</span></div>
           </div>
           <div className="trust-line"><ShieldCheck size={15} /> Private by design <i /> Routed with care <i /> Track every step</div>
         </div>
@@ -128,29 +165,29 @@ function AuthScreen({ onSignedIn, initialError }) {
           {!portal ? <>
             <h2>Choose your portal.</h2>
             <p className="auth-subtitle">Select how you want to access CampusCare.</p>
+            {message && <div className="success-banner">{message}</div>}
             {error && <div className="error-banner">{error}</div>}
             <div className="portal-options">
-              <button className="portal-option" onClick={() => choosePortal("student")}><span><MessageSquareText size={18} /></span><b>Student portal</b><small>Submit and track campus concerns</small><ArrowRight size={15} /></button>
+              <button className="portal-option" onClick={() => choosePortal("student")}><span><MessageSquareText size={18} /></span><b>User portal</b><small>Submit and track campus concerns</small><ArrowRight size={15} /></button>
               <button className="portal-option" onClick={() => choosePortal("admin")}><span><ShieldCheck size={18} /></span><b>Admin portal</b><small>Manage access and campus routing</small><ArrowRight size={15} /></button>
               <button className="portal-option" onClick={() => choosePortal("department")}><span><Building2 size={18} /></span><b>Department portal</b><small>Review concerns assigned to your team</small><ArrowRight size={15} /></button>
             </div>
           </> : <>
           <button className="portal-back" onClick={() => { setPortal(""); setError(""); }}>← All portals</button>
-          <div className="eyebrow portal-label">{portal === "student" ? "STUDENT PORTAL" : portal === "admin" ? "ADMIN PORTAL" : "DEPARTMENT PORTAL"}</div>
-          <h2>{mode === "login" ? "Good to have you back." : "Let's get you started."}</h2>
-          <p className="auth-subtitle">{mode === "login" ? "Sign in to follow the things that matter." : portal === "department" ? "Request access to your department's complaint queue." : "Create your account to raise and track campus concerns."}</p>
+          <div className="eyebrow portal-label">{portal === "student" ? "USER PORTAL" : portal === "admin" ? "ADMIN PORTAL" : "DEPARTMENT PORTAL"}</div>
+          <h2>{portal === "admin" ? "Good to have you back." : portal === "department" && mode === "register" ? "Request department access." : portal === "student" && mode === "register" ? "Let's get you started." : "Continue with Google."}</h2>
+          <p className="auth-subtitle">{portal === "admin" ? "Sign in to manage campus access and routing." : portal === "department" && mode === "register" ? "Use your verified VIT Google account. An administrator must approve your request." : portal === "department" ? "Sign in with the Google account approved for your department." : "Use your verified VIT Google account to sign in or create your account."}</p>
           {message && <div className="success-banner">{message}</div>}
           {error && <div className="error-banner">{error}</div>}
-          <form className="auth-form" onSubmit={submit}>
+          {portal === "admin" ? <form className="auth-form" onSubmit={submit}>
+            <label>Email address<input name="email" type="email" value={form.email} onChange={update} autoComplete="username" placeholder="Admin email" required /></label>
+            <label>Password<input name="password" type="password" value={form.password} onChange={update} autoComplete="current-password" placeholder="Enter your password" required /></label>
+            <button className="button button-primary auth-submit" disabled={busy}>{busy ? "Please wait…" : "Sign in"} <ArrowRight size={16} /></button>
+          </form> : <>
             {portal === "department" && <label>Department<select value={department} onChange={(event) => setDepartment(event.target.value)} required><option value="">Choose your department</option>{DEPARTMENTS.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select></label>}
-            {mode === "register" && <>
-              <label>Full name<input name="full_name" value={form.full_name} onChange={update} autoComplete="name" placeholder="Your name" required /></label>
-            </>}
-            <label>Email address<input name="email" type="email" value={form.email} onChange={update} autoComplete="email" placeholder="you@campus.edu" required /></label>
-            <label>Password<input name="password" type="password" value={form.password} onChange={update} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "login" ? "Enter your password" : "At least 10 characters"} minLength={mode === "login" ? 1 : 10} required /></label>
-            <button className="button button-primary auth-submit" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"} <ArrowRight size={16} /></button>
-          </form>
-          {googleEnabled && (portal !== "department" || (department && mode === "login")) && <><div className="auth-divider"><span /> or continue with <span /></div><a className="button button-google" href={`${API_BASE}/auth/google?${new URLSearchParams({ portal, ...(portal === "department" ? { department } : {}) })}`}><span className="google-g">G</span> Continue with Google</a></>}
+            <small className="field-hint">Use a VIT Google account whose email domain starts with “vit” and ends in “.ac.in”.</small>
+            {googleEnabled && (portal !== "department" || department) && <a className="button button-google" href={`${API_BASE}/auth/google?${new URLSearchParams({ portal, ...(portal === "department" ? { department } : {}), ...(mode === "register" ? { mode } : {}) })}`}><span className="google-g">G</span> Continue with Google</a>}
+          </>}
           {portal === "student" || portal === "department" ? <p className="auth-switch">{mode === "login" ? "New to CampusCare?" : "Already have an account?"} <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setMessage(""); }}>{mode === "login" ? "Create an account" : "Sign in"}</button></p> : <p className="auth-switch">Portal access is assigned by a CampusCare administrator.</p>}
           <p className="auth-note"><ShieldCheck size={14} /> Your details are only shared with the team handling your concern.</p>
           </>}
@@ -379,7 +416,7 @@ function App() {
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card"><span className="help-icon"><CircleHelp size={16} /></span><b>Need a hand?</b><p>Reach out to campus support if you need help submitting a concern.</p><span className="help-link">View support guide <ArrowRight size={13} /></span></div>
-          <div className="profile-row"><span className="avatar">{initials(user.full_name)}</span><span className="profile-meta"><b>{user.full_name}</b><small>{user.role === "CITIZEN" ? user.user_type.replace("_", " ").toLowerCase() : `${user.role.toLowerCase()}${user.department ? ` · ${user.department.toLowerCase()}` : ""}`}</small></span><button className="icon-button logout-button" title="Sign out" onClick={signOut}><LogOut size={16} /></button></div>
+          <div className="profile-row"><span className="avatar">{initials(user.full_name)}</span><span className="profile-meta"><b>{user.full_name}</b><small>{user.role === "USER" ? "User" : `${user.role.toLowerCase()}${user.department ? ` · ${user.department.toLowerCase()}` : ""}`}</small></span><button className="icon-button logout-button" title="Sign out" onClick={signOut}><LogOut size={16} /></button></div>
         </div>
       </aside>
       <main className="main-content">
@@ -402,13 +439,13 @@ function App() {
         </div>
         <footer className="page-footer"><span>CampusCare <i /> AI-assisted, human-led</span><span>Need urgent help? Contact campus security directly.</span></footer>
       </main>
-      {selected && <ComplaintDrawer key={selected.id} complaint={selected} history={history} user={user} busy={busy} onClose={() => setSelected(null)} onStatus={saveStatus} onRollback={rollbackComplaint} onFeedback={sendFeedback} />}
+      {selected && <ComplaintDrawer key={selected.id} complaint={selected} history={history} user={user} busy={busy} onClose={() => setSelected(null)} onStatus={saveStatus} onDepartment={reassignDepartment} onDelete={deleteComplaint} onRollback={rollbackComplaint} onFeedback={sendFeedback} />}
     </div>
   );
 }
 
 function Overview({ user, complaints, stats, onViewAll, onNew, onOpen }) {
-  const citizen = user.role === "CITIZEN";
+  const citizen = user.role === "USER";
   const openCount = (stats.by_status.SUBMITTED || 0) + (stats.by_status.ASSIGNED || 0) + (stats.by_status.IN_PROGRESS || 0);
   const resolvedCount = stats.by_status.RESOLVED || 0;
   const firstName = user.full_name.split(" ")[0];
@@ -426,7 +463,7 @@ function Overview({ user, complaints, stats, onViewAll, onNew, onOpen }) {
         {complaints.length === 0 ? <EmptyState onNew={onNew} citizen={citizen} /> : <div className="recent-list">{complaints.slice(0, 5).map((item) => <button className="recent-item" key={item.id} onClick={() => onOpen(item)}><span className={`department-icon ${(item.department || "").toLowerCase()}`}><Building2 size={16} /></span><span className="recent-main"><b>{item.title}</b><small>{item.reference} <i /> {item.department.toLowerCase()} <i /> {formatDate(item.created_at)}</small></span><StatusBadge status={item.status} /><ArrowRight className="recent-arrow" size={15} /></button>)}</div>}
       </div>
       <div className="right-column">
-        <div className="ai-card"><div className="ai-card-label"><span><Sparkles size={14} /></span> SMART ROUTING</div><h3>Right issue.<br />Right people.</h3><p>Our AI reviews each concern, recommends a department and priority, and finds useful past resolutions.</p><div className="ai-steps"><span><i>01</i> Describe what happened</span><span><i>02</i> Review AI suggestions</span><span><i>03</i> Track the response</span></div>{citizen && <button className="ai-card-link" onClick={onNew}>Start a concern <ArrowRight size={14} /></button>}</div>
+        <div className="ai-card"><div className="ai-card-label"><span><Sparkles size={14} /></span> SMART ROUTING</div><h3>Right issue.<br />Right people.</h3><p>You choose the department. AI suggests a category and priority, then finds useful past resolutions.</p><div className="ai-steps"><span><i>01</i> Describe what happened</span><span><i>02</i> Review AI suggestions</span><span><i>03</i> Track the response</span></div>{citizen && <button className="ai-card-link" onClick={onNew}>Start a concern <ArrowRight size={14} /></button>}</div>
         <div className="department-panel panel"><div className="panel-heading compact"><div><h2>Department pulse</h2><p>Where concerns are routed.</p></div><Building2 size={17} className="muted-icon" /></div><div className="dept-bars">{DEPARTMENTS.map((department) => { const amount = stats.by_department?.[department] || 0; const max = Math.max(1, ...Object.values(stats.by_department || {})); return <div className="dept-bar-row" key={department}><span>{department.toLowerCase()}</span><div className="bar-track"><i style={{ width: `${Math.max(amount ? 10 : 0, (amount / max) * 100)}%` }} /></div><b>{amount}</b></div>; })}</div></div>
       </div>
     </div>
@@ -450,7 +487,6 @@ function ComplaintTable({ items, search, setSearch, filter, setFilter, onOpen })
 function SubmitConcern({ onComplete }) {
   const [form, setForm] = useState({ title: "", description: "", location: "", department: "" });
   const [analysis, setAnalysis] = useState(null);
-  const [allowExternalAI, setAllowExternalAI] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState(1);
@@ -458,9 +494,8 @@ function SubmitConcern({ onComplete }) {
     event.preventDefault();
     setBusy(true); setError("");
     try {
-      const result = await api("/ai/analyze", { method: "POST", body: JSON.stringify({ description: form.description }) });
+      const result = await api("/ai/analyze", { method: "POST", body: JSON.stringify({ description: form.description, department: form.department }) });
       setAnalysis(result);
-      setAllowExternalAI(false);
       setForm((current) => ({ ...current, department: result.department }));
       setStep(2);
     } catch (requestError) { setError(requestError.message); }
@@ -469,7 +504,7 @@ function SubmitConcern({ onComplete }) {
   const submit = async () => {
     setBusy(true); setError("");
     try {
-      const result = await api("/complaints", { method: "POST", body: JSON.stringify({ ...form, allow_external_ai: allowExternalAI }) });
+      const result = await api("/complaints", { method: "POST", body: JSON.stringify(form) });
       await onComplete(result.complaint);
     } catch (requestError) { setError(requestError.message); setBusy(false); }
   };
@@ -482,25 +517,25 @@ function SubmitConcern({ onComplete }) {
         {step === 1 ? <form onSubmit={analyze} className="concern-form">
           <label>Short title <span>REQUIRED</span><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="e.g. Water leak near the east residence hall" minLength={4} maxLength={160} required /></label>
           <label>What happened? <span>REQUIRED</span><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Share the details that will help the team understand the issue. Include what you noticed and when it started." minLength={15} maxLength={5000} rows={6} required /><small className="field-hint">Please avoid sharing passwords or sensitive personal information.</small></label>
+          <label>Department <span>REQUIRED</span><select value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })} required><option value="">Choose a department</option>{DEPARTMENTS.map((department) => <option key={department} value={department}>{department.charAt(0) + department.slice(1).toLowerCase()}</option>)}</select><small className="field-hint">You choose the team. AI will suggest a category and priority for your review.</small></label>
           <label>Where is it happening? <span>OPTIONAL</span><input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Building, room, or campus area" maxLength={160} /></label>
           <button className="button button-primary form-submit" disabled={busy}>{busy ? "Finding the right team…" : "Review AI suggestions"} <Sparkles size={15} /></button>
         </form> : <>
-          <div className="analysis-result"><div className="analysis-heading"><span className="analysis-spark"><Sparkles size={16} /></span><span><b>Routing suggestions are ready</b><small>Based on similar past concerns and campus guidance.</small></span><span className="match-pill">AI REVIEW</span></div><div className="suggestion-grid"><label>RECOMMENDED DEPARTMENT<select value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })}>{DEPARTMENTS.map((department) => <option key={department}>{department}</option>)}</select></label><div><span className="suggestion-label">CATEGORY</span><b>{analysis?.category}</b></div><div><span className="suggestion-label">PRIORITY</span><b className={`priority-text priority-${(analysis?.priority || "medium").toLowerCase()}`}>{analysis?.priority}</b></div></div>
+          <div className="analysis-result"><div className="analysis-heading"><span className="analysis-spark"><Sparkles size={16} /></span><span><b>AI suggestions are ready</b><small>Based on similar past concerns and campus guidance.</small></span><span className="match-pill">AI REVIEW</span></div><div className="suggestion-grid"><div><span className="suggestion-label">YOUR DEPARTMENT</span><b>{form.department}</b></div><div><span className="suggestion-label">CATEGORY</span><b>{analysis?.category}</b></div><div><span className="suggestion-label">AI PRIORITY</span><b className={`priority-text priority-${(analysis?.priority || "medium").toLowerCase()}`}>{analysis?.priority}</b></div></div>
             {analysis?.duplicate && <div className="duplicate-warning"><span>!</span><div><b>This may be similar to an existing concern.</b><small>We’ll still submit it so the team can review it alongside related reports.</small></div></div>}
             <div className="resolution-suggestion"><span className="suggestion-label">SUGGESTED NEXT STEP</span><p>{analysis?.suggested_resolution}</p></div>
             {analysis?.warning && <p className="model-warning">AI is running in local example-matching mode: {analysis.warning}</p>}
-            {analysis?.external_ai_available && <label className="external-ai-consent"><input type="checkbox" checked={allowExternalAI} onChange={(event) => setAllowExternalAI(event.target.checked)} /><span><b>Use Gemini for an additional resolution suggestion</b><small>If selected, your complaint text and retrieved context are sent to Google Gemini. The local suggestion is used otherwise.</small></span></label>}
           </div>
           <div className="review-summary"><b>{form.title}</b><p>{form.description}</p>{form.location && <small><Building2 size={13} /> {form.location}</small>}</div>
           <div className="review-actions"><button className="button button-outline" onClick={() => setStep(1)} disabled={busy}>Back to edit</button><button className="button button-primary" onClick={submit} disabled={busy}>{busy ? "Submitting…" : "Submit concern"} <ArrowRight size={15} /></button></div>
         </>}
       </div>
-      <aside className="form-aside"><div className="aside-card"><span className="aside-icon"><ShieldCheck size={18} /></span><h3>Your privacy matters</h3><p>Your concern is visible only to you and the staff authorized to respond.</p></div><div className="aside-card process-card"><span className="aside-icon purple"><Activity size={18} /></span><h3>What happens next?</h3><ol><li><i>1</i><span><b>Smart routing</b><small>We suggest the right department.</small></span></li><li><i>2</i><span><b>Team review</b><small>A staff member takes a look.</small></span></li><li><i>3</i><span><b>Clear follow-up</b><small>Track progress right here.</small></span></li></ol></div><div className="aside-note"><CircleHelp size={15} /><span>For immediate danger, contact campus security directly.</span></div></aside>
+      <aside className="form-aside"><div className="aside-card"><span className="aside-icon"><ShieldCheck size={18} /></span><h3>Your privacy matters</h3><p>Your concern is visible only to you and the staff authorized to respond.</p></div><div className="aside-card process-card"><span className="aside-icon purple"><Activity size={18} /></span><h3>What happens next?</h3><ol><li><i>1</i><span><b>Department selection</b><small>You choose the team that receives the concern.</small></span></li><li><i>2</i><span><b>Team review</b><small>A staff member takes a look.</small></span></li><li><i>3</i><span><b>Clear follow-up</b><small>Track progress right here.</small></span></li></ol></div><div className="aside-note"><CircleHelp size={15} /><span>For immediate danger, contact campus security directly.</span></div></aside>
     </div>
   </section>;
 }
 
-function ComplaintDrawer({ complaint, history, user, busy, onClose, onStatus, onRollback, onFeedback }) {
+function ComplaintDrawer({ complaint, history, user, busy, onClose, onStatus, onDepartment, onDelete, onRollback, onFeedback }) {
   const [resolution, setResolution] = useState("");
   const [rating, setRating] = useState(5);
   const [feedbackComment, setFeedbackComment] = useState("");
@@ -519,9 +554,10 @@ function ComplaintDrawer({ complaint, history, user, busy, onClose, onStatus, on
       <div className="drawer-section"><span className="drawer-label">DESCRIPTION</span><p>{complaint.description}</p>{complaint.location && <small className="location-pill"><Building2 size={13} />{complaint.location}</small>}</div>
       <div className="drawer-ai"><div><Sparkles size={15} /><b>AI routing</b></div><p>{complaint.category} <i /> {complaint.priority.toLowerCase()} priority</p>{complaint.suggested_resolution && <small>{complaint.suggested_resolution}</small>}</div>
       {complaint.resolution && <div className="drawer-section resolution-box"><span className="drawer-label">RESOLUTION</span><p>{complaint.resolution}</p></div>}
-      <div className="drawer-section timeline-section"><span className="drawer-label">ACTIVITY TIMELINE</span><div className="timeline">{history.map((item) => <div className="timeline-item" key={item.id}><i /><span><b>{item.action.replaceAll("_", " ").toLowerCase()}</b><small>{item.actor} · {formatDate(item.created_at)}</small>{item.note && <small>{item.note}</small>}{user.role === "ADMIN" && item.before_state && history[history.length - 1]?.id === item.id && <button className="timeline-undo" onClick={() => onRollback(complaint, item)}><RotateCcw size={12} /> Undo latest change</button>}</span></div>)}</div></div>
-      {staff && nextStatuses.length > 0 && <div className="drawer-actions"><label>Update status<select value={status} onChange={(event) => setStatus(event.target.value)}>{nextStatuses.map((nextStatus) => <option key={nextStatus} value={nextStatus}>{STATUS_LABELS[nextStatus]}</option>)}</select></label>{user.role === "ADMIN" && <label>Responsible department<select value={department} onChange={(event) => setDepartment(event.target.value)}>{DEPARTMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>}{status === "RESOLVED" && <label>Resolution details<textarea value={resolution} onChange={(event) => setResolution(event.target.value)} minLength={10} rows={3} placeholder="What was done to resolve this?" required /></label>}<button className="button button-primary" onClick={() => onStatus(complaint.id, status, resolution, department)} disabled={busy || (status === "RESOLVED" && resolution.trim().length < 10)}>{busy ? "Saving…" : status === "RESOLVED" ? "Close complaint" : "Save update"} {status === "RESOLVED" ? <Check size={15} /> : <ArrowRight size={15} />}</button></div>}
-      {user.role === "CITIZEN" && complaint.status === "RESOLVED" && (complaint.feedback_submitted ? <p className="feedback-thanks">Thank you — your feedback is recorded.</p> : <div className="feedback-box"><label>How was this resolved?<select value={rating} onChange={(event) => setRating(Number(event.target.value))}><option value={5}>5 — Excellent</option><option value={4}>4 — Good</option><option value={3}>3 — Okay</option><option value={2}>2 — Needs improvement</option><option value={1}>1 — Not resolved well</option></select></label><textarea value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} maxLength={1000} placeholder="Optional feedback" rows={2} /><button className="button button-outline" onClick={() => onFeedback(complaint.id, rating, feedbackComment)}>Send feedback</button></div>)}
+      <div className="drawer-section timeline-section"><span className="drawer-label">ACTIVITY TIMELINE</span><div className="timeline">{history.map((item) => <div className="timeline-item" key={item.id}><i /><span><b>{item.action.replaceAll("_", " ").toLowerCase()}</b><small>Activity #{item.id} · {item.actor} · {formatDate(item.created_at)}</small>{item.note && <small>{item.note}</small>}{user.role === "ADMIN" && item.before_state && history[history.length - 1]?.id === item.id && <button className="timeline-undo" onClick={() => onRollback(complaint, item)}><RotateCcw size={12} /> Undo latest change</button>}</span></div>)}</div></div>
+      {user.role === "ADMIN" && <div className="drawer-actions"><label>Responsible department<select value={department} onChange={(event) => setDepartment(event.target.value)}>{DEPARTMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><button className="button button-outline" onClick={() => onDepartment(complaint.id, department)} disabled={busy || department === complaint.department}>{busy ? "Saving…" : "Change department"} <Building2 size={15} /></button><button className="delete-user-button" onClick={() => onDelete(complaint)} disabled={busy}><Trash2 size={14} /> Delete complaint</button></div>}
+      {staff && nextStatuses.length > 0 && <div className="drawer-actions"><label>Update status<select value={status} onChange={(event) => setStatus(event.target.value)}>{nextStatuses.map((nextStatus) => <option key={nextStatus} value={nextStatus}>{STATUS_LABELS[nextStatus]}</option>)}</select></label>{status === "RESOLVED" && <label>Resolution details<textarea value={resolution} onChange={(event) => setResolution(event.target.value)} minLength={10} rows={3} placeholder="What was done to resolve this?" required /></label>}<button className="button button-primary" onClick={() => onStatus(complaint.id, status, resolution, complaint.department)} disabled={busy || (status === "RESOLVED" && resolution.trim().length < 10)}>{busy ? "Saving…" : status === "RESOLVED" ? "Close complaint" : "Save update"} {status === "RESOLVED" ? <Check size={15} /> : <ArrowRight size={15} />}</button></div>}
+      {user.role === "USER" && complaint.status === "RESOLVED" && (complaint.feedback_submitted ? <p className="feedback-thanks">Thank you — your feedback is recorded.</p> : <div className="feedback-box"><label>How was this resolved?<select value={rating} onChange={(event) => setRating(Number(event.target.value))}><option value={5}>5 — Excellent</option><option value={4}>4 — Good</option><option value={3}>3 — Okay</option><option value={2}>2 — Needs improvement</option><option value={1}>1 — Not resolved well</option></select></label><textarea value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} maxLength={1000} placeholder="Optional feedback" rows={2} /><button className="button button-outline" onClick={() => onFeedback(complaint.id, rating, feedbackComment)}>Send feedback</button></div>)}
     </div>
   </aside></div>;
 }
@@ -557,15 +593,15 @@ function UsersPanel({ users, events, onUpdateRole, onDeleteUser, onRollback }) {
         {latestReversibleEvent && <button className="rollback-access-button" onClick={() => onRollback(latestReversibleEvent)} title="Undo latest access change"><RotateCcw size={13} /> Undo access change</button>}
         <button className="delete-user-button" onClick={() => onDeleteUser(item)} title="Delete account"><Trash2 size={14} /> Delete account</button>
       </span></span></span></td>
-      <td>{item.role === "ADMIN" ? "Admin" : item.role === "OFFICER" ? "Department" : item.user_type === "WORKING_STAFF" ? "Department pending" : "Student"}</td>
-      <td><select className="role-select" value={role} onChange={(event) => setRole(item, event.target.value)}><option value="CITIZEN">Citizen</option><option value="OFFICER">Officer</option><option value="ADMIN">Admin</option></select></td>
+      <td>{item.role === "ADMIN" ? "Admin" : item.role === "OFFICER" ? "Department" : item.user_type === "WORKING_STAFF" ? "Department pending" : "User"}</td>
+      <td><select className="role-select" value={role} onChange={(event) => setRole(item, event.target.value)}><option value="USER">User</option><option value="OFFICER">Officer</option><option value="ADMIN">Admin</option></select></td>
       <td>{role === "OFFICER" ? <div className="department-assignment"><select className="role-select" value={department} onChange={(event) => {
         if (selection) setPending((current) => ({ ...current, [item.id]: { ...selection, department: event.target.value } }));
         else onUpdateRole(item, "OFFICER", event.target.value);
-      }}><option value="">Choose department</option>{DEPARTMENTS.map((name) => <option key={name}>{name}</option>)}</select>{selection && <button className="apply-role" disabled={!department} onClick={() => applyOfficer(item)}>Apply</button>}</div> : item.user_type === "WORKING_STAFF" && item.department ? <span>{item.department.toLowerCase()} · pending</span> : <span className="muted">—</span>}</td>
+      }}><option value="">Choose department</option>{DEPARTMENTS.map((name) => <option key={name}>{name}</option>)}</select>{selection && <button className="apply-role" disabled={!department} onClick={() => applyOfficer(item)}>Apply</button>}</div> : item.user_type === "WORKING_STAFF" && item.department ? <span>{item.department.toLowerCase()} · pending{item.role === "USER" && <button className="apply-role" onClick={() => onUpdateRole(item, "OFFICER", item.department)}>Approve request</button>}</span> : <span className="muted">—</span>}</td>
       <td><span className={`account-status ${item.is_active ? "active" : ""}`}><i />{item.is_active ? "Active" : "Disabled"}</span></td>
     </tr>;
-  })}</tbody></table></div></div><p className="permission-note"><ShieldCheck size={15} /> New registrations are always Citizens. Officers see only their department; only Admins can change access.</p></section>;
+  })}</tbody></table></div></div><p className="permission-note"><ShieldCheck size={15} /> New registrations are Users. Department sign-up requests remain pending until an administrator approves them as Officers. Only Admins can change access.</p></section>;
 }
 
 function CategoriesPanel({ categories, onCreate }) {
@@ -584,7 +620,7 @@ function CategoriesPanel({ categories, onCreate }) {
 
 function SystemPanel({ events, onRollback }) {
   return <section className="page-section"><div className="page-heading"><div><div className="eyebrow">OVERSIGHT</div><h1>System activity</h1><p>Review account actions and complaint changes.</p></div><span className="admin-chip"><ShieldCheck size={14} /> ADMIN ONLY</span></div>
-    <div className="panel table-panel"><div className="panel-heading users-heading"><div><h2>Audit trail</h2><p>Latest security-relevant actions. Reversible access changes can be undone.</p></div><Activity size={17} className="muted-icon" /></div><div className="audit-list">{events.length ? events.map((event) => <div className="audit-item" key={event.id}><span className="audit-dot" /><span><b>{event.action.replaceAll("_", " ").toLowerCase()}</b><small>{event.actor} · {event.resource_type}{event.resource_id ? ` · ${String(event.resource_id).slice(0, 8)}` : ""}</small></span><time>{formatDate(event.created_at)}</time>{event.can_rollback && <button className="rollback-access-button" onClick={() => onRollback(event)}><RotateCcw size={13} /> Roll back</button>}</div>) : <div className="empty-table">No audited activity yet.</div>}</div></div>
+    <div className="panel table-panel"><div className="panel-heading users-heading"><div><h2>Audit trail</h2><p>Latest security-relevant actions. Reversible access changes can be undone.</p></div><Activity size={17} className="muted-icon" /></div><div className="audit-list">{events.length ? events.map((event) => <div className="audit-item" key={event.id}><span className="audit-dot" /><span><b>{event.action.replaceAll("_", " ").toLowerCase()}</b><small>Activity #{event.id} · {event.actor} · {event.resource_type}{event.resource_id ? ` · ${String(event.resource_id).slice(0, 8)}` : ""}</small></span><time>{formatDate(event.created_at)}</time>{event.can_rollback && <button className="rollback-access-button" onClick={() => onRollback(event)}><RotateCcw size={13} /> Roll back</button>}</div>) : <div className="empty-table">No audited activity yet.</div>}</div></div>
   </section>;
 }
 

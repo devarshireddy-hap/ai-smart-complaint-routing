@@ -7,7 +7,7 @@
 INSERT INTO roles (role_name, description) VALUES
     ('ADMIN', 'System administrator with full access'),
     ('OFFICER', 'Department officer who handles complaints'),
-    ('CITIZEN', 'Regular user who submits complaints')
+    ('USER', 'Regular user who submits complaints')
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================
@@ -49,10 +49,10 @@ ON CONFLICT DO NOTHING;
 -- ============================================================================
 -- ASSIGN PERMISSIONS TO ROLES
 -- ============================================================================
--- CITIZEN role permissions
+-- USER role permissions
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.role_id, p.permission_id FROM roles r, permissions p
-WHERE r.role_name = 'CITIZEN' 
+WHERE r.role_name = 'USER'
   AND p.permission_name IN (
     'complaint.create', 'complaint.read', 'complaint.reopen',
     'feedback.create', 'user.read', 'department.read'

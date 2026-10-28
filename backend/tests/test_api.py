@@ -2,10 +2,24 @@ import unittest
 from unittest.mock import Mock, patch
 
 from flask import redirect
+from flask_jwt_extended import create_access_token
 from sqlalchemy.engine import make_url
+from werkzeug.security import generate_password_hash
 
-from backend.app import _sqlalchemy_database_url, create_app
-from backend.models import AuditLog, Complaint, ComplaintHistory, Department, Role, User, db
+from backend.app import _is_vit_email, _sqlalchemy_database_url, create_app
+from backend.models import (
+    AuditLog,
+    Category,
+    Complaint,
+    ComplaintEmbedding,
+    ComplaintHistory,
+    Department,
+    Feedback,
+    Role,
+    RollbackRecord,
+    User,
+    db,
+)
 
 
 class AuthenticationAuthorizationTests(unittest.TestCase):
@@ -32,6 +46,31 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             db.session.remove()
             db.drop_all()
 
+    def create_test_account(self, data):
+        with self.app.app_context():
+            user_type = data.get("user_type", "STUDENT")
+            department = None
+            if data.get("portal") == "department":
+                user_type = "WORKING_STAFF"
+                department = data["department"]
+            user = User(
+                email=data["email"].strip().lower(),
+                full_name=data["full_name"],
+                password_hash=generate_password_hash(
+                    data.get("password", "A-strong-demo-password"),
+                    method="scrypt",
+                ),
+                user_type=user_type,
+                role=Role.query.filter_by(name="USER").one(),
+            )
+            db.session.add(user)
+            user.department = department
+            db.session.commit()
+            account = {"user": user.to_dict()}
+            token = create_access_token(identity=str(user.id))
+        self.client.set_cookie("access_token_cookie", token, path="/api/")
+        return account
+
     def test_health_checks_database_connectivity(self):
         response = self.client.get("/api/v1/health")
         self.assertEqual(response.status_code, 200)
@@ -46,22 +85,38 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             for cookie in response.headers.getlist("Set-Cookie")
         ))
 
-    def test_registration_always_creates_citizen(self):
-        response = self.client.post("/api/v1/auth/register", json={
+    def test_password_registration_is_disabled_for_users_and_departments(self):
+        invalid_email = self.client.post("/api/v1/auth/register", json={
             "full_name": "Test Student",
             "email": "student@example.edu",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        self.assertEqual(invalid_email.status_code, 403)
+        invalid_vit_domain = self.client.post("/api/v1/auth/register", json={
+            "full_name": "Test Student",
+            "email": "student@evitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        self.assertEqual(invalid_vit_domain.status_code, 403)
+
+        response = self.client.post("/api/v1/auth/register", json={
+            "full_name": "Test Student",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
             "role": "ADMIN",
         })
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json["user"]["role"], "CITIZEN")
-        self.assertNotIn("password_hash", response.json["user"])
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("Google", response.json["error"])
+        self.assertTrue(_is_vit_email("student@vitstudent.ac.in"))
+        self.assertFalse(_is_vit_email("student@evitstudent.ac.in"))
 
-    def test_citizen_cannot_access_admin_user_management(self):
-        self.client.post("/api/v1/auth/register", json={
+    def test_user_cannot_access_admin_user_management(self):
+        self.create_test_account({
             "full_name": "Test Student",
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
@@ -69,92 +124,145 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_login_rejects_invalid_password(self):
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Student",
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
         self.client.post("/api/v1/auth/logout")
         response = self.client.post("/api/v1/auth/login", json={
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "wrong-password",
         })
         self.assertEqual(response.status_code, 401)
 
-    def test_portal_login_checks_role_and_assigned_department(self):
-        self.client.post("/api/v1/auth/register", json={
+    def test_password_login_is_restricted_to_admin(self):
+        self.create_test_account({
             "full_name": "Test Student",
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
         denied_admin = self.client.post("/api/v1/auth/login", json={
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "admin",
         })
         self.assertEqual(denied_admin.status_code, 403)
         accepted_student = self.client.post("/api/v1/auth/login", json={
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "student",
         })
-        self.assertEqual(accepted_student.status_code, 200)
+        self.assertEqual(accepted_student.status_code, 403)
+        student_without_portal = self.client.post("/api/v1/auth/login", json={
+            "email": "student@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+        })
+        self.assertEqual(student_without_portal.status_code, 403)
 
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Officer",
-            "email": "officer@example.edu",
+            "email": "officer@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "WORKING_STAFF",
         })
         with self.app.app_context():
-            officer = User.query.filter_by(email="officer@example.edu").one()
+            officer = User.query.filter_by(email="officer@vitstudent.ac.in").one()
             officer.role = Role.query.filter_by(name="OFFICER").one()
             officer.department = "PLUMBING"
             db.session.commit()
 
         denied_department = self.client.post("/api/v1/auth/login", json={
-            "email": "officer@example.edu",
+            "email": "officer@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "department",
             "department": "FINANCE",
         })
         self.assertEqual(denied_department.status_code, 403)
         accepted_department = self.client.post("/api/v1/auth/login", json={
-            "email": "officer@example.edu",
+            "email": "officer@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "department",
             "department": "PLUMBING",
         })
-        self.assertEqual(accepted_department.status_code, 200)
+        self.assertEqual(accepted_department.status_code, 403)
 
-    def test_department_registration_creates_pending_non_officer_account(self):
+        self.create_test_account({
+            "full_name": "Test Admin",
+            "email": "admin@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "user_type": "WORKING_STAFF",
+        })
+        with self.app.app_context():
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
+            admin.role = Role.query.filter_by(name="ADMIN").one()
+            db.session.commit()
+        admin_login = self.client.post("/api/v1/auth/login", json={
+            "email": "admin@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "admin",
+        })
+        self.assertEqual(admin_login.status_code, 200)
+
+    def test_department_password_signup_and_password_login_are_rejected(self):
         response = self.client.post("/api/v1/auth/register", json={
             "full_name": "Department Applicant",
-            "email": "applicant@example.edu",
+            "email": "applicant@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "department",
             "department": "PLUMBING",
         })
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json["user"]["role"], "CITIZEN")
-        self.assertEqual(response.json["user"]["user_type"], "WORKING_STAFF")
-        self.assertEqual(response.json["user"]["department"], "PLUMBING")
+        self.assertEqual(response.status_code, 403)
+        applicant = self.create_test_account({
+            "full_name": "Department Applicant",
+            "email": "applicant@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "department",
+            "department": "PLUMBING",
+        })
+        self.assertEqual(applicant["user"]["role"], "USER")
+        self.assertEqual(applicant["user"]["user_type"], "WORKING_STAFF")
+        self.assertEqual(applicant["user"]["department"], "PLUMBING")
         self.client.post("/api/v1/auth/logout")
         login = self.client.post("/api/v1/auth/login", json={
-            "email": "applicant@example.edu",
+            "email": "applicant@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "department",
             "department": "PLUMBING",
         })
         self.assertEqual(login.status_code, 403)
+        target_id = applicant["user"]["id"]
+        self.create_test_account({
+            "full_name": "Test Admin",
+            "email": "admin@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        with self.app.app_context():
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
+            admin.role = Role.query.filter_by(name="ADMIN").one()
+            db.session.commit()
+        approved = self.client.patch(
+            f"/api/v1/admin/users/{target_id}/role",
+            json={"role": "OFFICER", "department": "PLUMBING"},
+        )
+        self.assertEqual(approved.status_code, 200)
+        self.client.post("/api/v1/auth/logout")
+        approved_login = self.client.post("/api/v1/auth/login", json={
+            "email": "applicant@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "department",
+            "department": "PLUMBING",
+        })
+        self.assertEqual(approved_login.status_code, 403)
 
     def test_google_sign_in_uses_configured_callback_and_department_intent(self):
         oauth = Mock()
         oauth.google.authorize_redirect.return_value = redirect("https://accounts.google.com/")
         oauth.google.authorize_access_token.return_value = {"userinfo": {
-            "email": "officer@example.edu",
+            "email": "officer@vitstudent.ac.in",
             "email_verified": True,
             "sub": "google-officer",
             "name": "Test Officer",
@@ -172,14 +280,16 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             })
 
         client = app.test_client()
-        client.post("/api/v1/auth/register", json={
-            "full_name": "Test Officer",
-            "email": "officer@example.edu",
-            "password": "A-strong-demo-password",
-            "user_type": "WORKING_STAFF",
-        })
         with app.app_context():
-            officer = User.query.filter_by(email="officer@example.edu").one()
+            officer = User(
+                email="officer@vitstudent.ac.in",
+                full_name="Test Officer",
+                password_hash=generate_password_hash("A-strong-demo-password", method="scrypt"),
+                user_type="WORKING_STAFF",
+                role=Role.query.filter_by(name="USER").one(),
+            )
+            db.session.add(officer)
+            db.session.flush()
             officer.role = Role.query.filter_by(name="OFFICER").one()
             officer.department = "PLUMBING"
             db.session.commit()
@@ -202,15 +312,60 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
                 db.session.remove()
                 db.drop_all()
 
+    def test_google_department_registration_creates_a_pending_access_request(self):
+        oauth = Mock()
+        oauth.google.authorize_redirect.return_value = redirect("https://accounts.google.com/")
+        oauth.google.authorize_access_token.return_value = {"userinfo": {
+            "email": "new-officer@vitstudent.ac.in",
+            "email_verified": True,
+            "sub": "google-new-officer",
+            "name": "New Officer",
+        }}
+        with patch("backend.app.OAuth", return_value=oauth):
+            app = create_app({
+                "TESTING": True,
+                "APP_ENV": "test",
+                "SQLALCHEMY_DATABASE_URI": "sqlite://",
+                "JWT_COOKIE_CSRF_PROTECT": False,
+                "GOOGLE_CLIENT_ID": "test-client",
+                "GOOGLE_CLIENT_SECRET": "test-secret",
+                "FRONTEND_URL": "http://localhost:3000",
+            })
+
+        client = app.test_client()
+        try:
+            denied_admin_sso = client.get("/api/v1/auth/google?portal=admin")
+            self.assertEqual(denied_admin_sso.status_code, 403)
+            client.get("/api/v1/auth/google?portal=department&department=FINANCE&mode=register")
+            response = client.get("/api/v1/auth/google/callback")
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(
+                response.headers["Location"],
+                "http://localhost:3000/?department_request=pending",
+            )
+            self.assertFalse(any(
+                cookie.startswith("access_token_cookie=")
+                for cookie in response.headers.getlist("Set-Cookie")
+            ))
+            with app.app_context():
+                applicant = User.query.filter_by(email="new-officer@vitstudent.ac.in").one()
+                self.assertEqual(applicant.user_type, "WORKING_STAFF")
+                self.assertEqual(applicant.role.name, "USER")
+                self.assertEqual(applicant.department, "FINANCE")
+        finally:
+            with app.app_context():
+                db.session.remove()
+                db.drop_all()
+
     def test_officer_can_access_the_department_queue(self):
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Student",
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
         with self.app.app_context():
-            student = User.query.filter_by(email="student@example.edu").one()
+            student = User.query.filter_by(email="student@vitstudent.ac.in").one()
             plumbing = Department.query.filter_by(name="PLUMBING").one()
             student_complaint = Complaint(
                 reporter_id=student.id,
@@ -225,14 +380,14 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             db.session.commit()
         self.client.post("/api/v1/auth/logout")
 
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Admin",
-            "email": "admin@example.edu",
+            "email": "admin@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "WORKING_STAFF",
         })
         with self.app.app_context():
-            admin = User.query.filter_by(email="admin@example.edu").one()
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
             admin.role = Role.query.filter_by(name="ADMIN").one()
             plumbing = Department.query.filter_by(name="PLUMBING").one()
             admin_complaint = Complaint(
@@ -248,14 +403,14 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             db.session.commit()
         self.client.post("/api/v1/auth/logout")
 
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Officer",
-            "email": "officer@example.edu",
+            "email": "officer@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "WORKING_STAFF",
         })
         with self.app.app_context():
-            officer = User.query.filter_by(email="officer@example.edu").one()
+            officer = User.query.filter_by(email="officer@vitstudent.ac.in").one()
             officer.role = Role.query.filter_by(name="OFFICER").one()
             officer.department = "PLUMBING"
             db.session.commit()
@@ -266,7 +421,7 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
 
         self.client.post("/api/v1/auth/logout")
         admin_login = self.client.post("/api/v1/auth/login", json={
-            "email": "admin@example.edu",
+            "email": "admin@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "admin",
         })
@@ -276,23 +431,23 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
         self.assertEqual(len(admin_complaints.json["complaints"]), 2)
 
     def test_admin_can_anonymize_account_without_removing_complaint_history(self):
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Admin",
-            "email": "admin@example.edu",
+            "email": "admin@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "WORKING_STAFF",
         })
         self.client.post("/api/v1/auth/logout")
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Account to Delete",
-            "email": "delete-me@example.edu",
+            "email": "delete-me@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
         with self.app.app_context():
-            admin = User.query.filter_by(email="admin@example.edu").one()
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
             admin.role = Role.query.filter_by(name="ADMIN").one()
-            target = User.query.filter_by(email="delete-me@example.edu").one()
+            target = User.query.filter_by(email="delete-me@vitstudent.ac.in").one()
             plumbing = Department.query.filter_by(name="PLUMBING").one()
             complaint = Complaint(
                 reporter_id=target.id,
@@ -310,13 +465,13 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
 
         self.client.post("/api/v1/auth/logout")
         login = self.client.post("/api/v1/auth/login", json={
-            "email": "admin@example.edu",
+            "email": "admin@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "admin",
         })
         self.assertEqual(login.status_code, 200)
         deleted = self.client.delete(f"/api/v1/admin/users/{target_id}")
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 200, deleted.json)
         self.assertIn("history was retained", deleted.json["message"])
         user_list = self.client.get("/api/v1/admin/users")
         self.assertNotIn(target_id, [user["id"] for user in user_list.json["users"]])
@@ -329,28 +484,28 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             self.assertEqual(complaint.reporter_id, target_id)
 
     def test_admin_can_rollback_latest_role_change_from_audit_or_people_access(self):
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Admin",
-            "email": "admin@example.edu",
+            "email": "admin@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "WORKING_STAFF",
         })
         self.client.post("/api/v1/auth/logout")
-        registered = self.client.post("/api/v1/auth/register", json={
+        registered = self.create_test_account({
             "full_name": "Test Student",
-            "email": "student@example.edu",
+            "email": "student@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
-        target_id = registered.json["user"]["id"]
+        target_id = registered["user"]["id"]
         self.client.post("/api/v1/auth/logout")
         with self.app.app_context():
-            admin = User.query.filter_by(email="admin@example.edu").one()
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
             admin.role = Role.query.filter_by(name="ADMIN").one()
             db.session.commit()
 
         self.client.post("/api/v1/auth/login", json={
-            "email": "admin@example.edu",
+            "email": "admin@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "portal": "admin",
         })
@@ -358,14 +513,15 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             f"/api/v1/admin/users/{target_id}/role",
             json={"role": "OFFICER", "department": "PLUMBING"},
         )
-        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.status_code, 200, changed.json)
         events = self.client.get("/api/v1/admin/audit").json["events"]
         role_event = next(event for event in events if event["action"] == "USER_ROLE_UPDATED")
         self.assertTrue(role_event["can_rollback"])
-        self.assertEqual(role_event["old_values"]["role"], "CITIZEN")
+        self.assertEqual(role_event["old_values"]["role"], "USER")
         with self.app.app_context():
             legacy_event = db.session.get(AuditLog, role_event["id"])
             legacy_event.old_values = None
+            legacy_event.details = {**legacy_event.details, "from": "CITIZEN"}
             db.session.commit()
         events = self.client.get("/api/v1/admin/audit").json["events"]
         role_event = next(event for event in events if event["id"] == role_event["id"])
@@ -376,7 +532,7 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             json={},
         )
         self.assertEqual(rolled_back.status_code, 200)
-        self.assertEqual(rolled_back.json["user"]["role"], "CITIZEN")
+        self.assertEqual(rolled_back.json["user"]["role"], "USER")
         self.assertIsNone(rolled_back.json["user"]["department"])
         events = self.client.get("/api/v1/admin/audit").json["events"]
         self.assertFalse(next(event for event in events if event["id"] == role_event["id"])["can_rollback"])
@@ -386,9 +542,9 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
         )
 
     def test_complaint_creation_and_status_workflow_follow_database_states(self):
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Citizen",
-            "email": "citizen@example.edu",
+            "email": "citizen@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "STUDENT",
         })
@@ -410,6 +566,7 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
                 "title": "Pipe leaking in the dorm",
                 "description": "A water pipe is leaking near the dormitory entrance.",
                 "location": "Dorm entrance",
+                "department": "PLUMBING",
             })
         self.assertEqual(response.status_code, 201)
         complaint_id = response.json["complaint"]["id"]
@@ -423,14 +580,14 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
         )
         self.client.post("/api/v1/auth/logout")
 
-        self.client.post("/api/v1/auth/register", json={
+        self.create_test_account({
             "full_name": "Test Officer",
-            "email": "assigned-officer@example.edu",
+            "email": "assigned-officer@vitstudent.ac.in",
             "password": "A-strong-demo-password",
             "user_type": "WORKING_STAFF",
         })
         with self.app.app_context():
-            officer = User.query.filter_by(email="assigned-officer@example.edu").one()
+            officer = User.query.filter_by(email="assigned-officer@vitstudent.ac.in").one()
             officer.role = Role.query.filter_by(name="OFFICER").one()
             officer.department = "PLUMBING"
             db.session.commit()
@@ -476,6 +633,229 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
                 resolution_event.note,
                 "The leaking pipe was repaired and tested.",
             )
+
+    def test_analysis_requires_the_user_selected_department(self):
+        self.create_test_account({
+            "full_name": "Test User",
+            "email": "user@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        response = self.client.post("/api/v1/ai/analyze", json={
+            "description": "There is a water leak in the residence hall.",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("department", response.json["error"].lower())
+
+    def test_complaint_department_uses_the_users_selection_not_the_ai_prediction(self):
+        self.create_test_account({
+            "full_name": "Test User",
+            "email": "user@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        ai_result = {
+            "department": "PLUMBING",
+            "category": "Water Leakage",
+            "priority": "HIGH",
+            "confidence_score": 0.9,
+            "suggested_resolution": "Ask the selected team to inspect the concern.",
+            "knowledge_documents": [],
+            "similar_complaints": [],
+            "duplicate": False,
+            "model": "test",
+        }
+        with patch("backend.app.analyze_complaint", return_value=ai_result), patch(
+            "backend.app.generate_embedding",
+            return_value=None,
+        ):
+            response = self.client.post("/api/v1/complaints", json={
+                "title": "Water concern in a different team",
+                "description": "There is a water concern that I want the security team to review.",
+                "department": "SECURITY",
+            })
+        self.assertEqual(response.status_code, 201)
+        complaint = response.json["complaint"]
+        self.assertEqual(complaint["department"], "SECURITY")
+        self.assertEqual(complaint["ai"]["department"], "SECURITY")
+        self.assertEqual(complaint["priority"], "HIGH")
+
+    def test_admin_can_reassign_resolved_complaint_and_record_history(self):
+        self.create_test_account({
+            "full_name": "Test Admin",
+            "email": "admin@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        with self.app.app_context():
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
+            admin.role = Role.query.filter_by(name="ADMIN").one()
+            plumbing = Department.query.filter_by(name="PLUMBING").one()
+            category = Category(
+                department_id=plumbing.id,
+                name="Test plumbing category",
+            )
+            db.session.add(category)
+            db.session.flush()
+            complaint = Complaint(
+                reporter_id=admin.id,
+                title="Resolved plumbing concern",
+                description="A resolved plumbing concern for department reassignment.",
+                department_record=plumbing,
+                category_record=category,
+                priority="MEDIUM",
+                status="RESOLVED",
+                submission_mode="WEB",
+            )
+            db.session.add(complaint)
+            db.session.commit()
+            complaint_id = complaint.id
+
+        response = self.client.patch(
+            f"/api/v1/admin/complaints/{complaint_id}/department",
+            json={"department": "SECURITY"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["complaint"]["department"], "SECURITY")
+        with self.app.app_context():
+            complaint = db.session.get(Complaint, complaint_id)
+            history = ComplaintHistory.query.filter_by(
+                complaint_id=complaint_id,
+                action="DEPARTMENT_REASSIGNED",
+            ).one()
+            audit = AuditLog.query.filter_by(
+                action="COMPLAINT_DEPARTMENT_REASSIGNED",
+                resource_id=complaint_id,
+            ).one()
+            self.assertEqual(complaint.status, "RESOLVED")
+            self.assertEqual(history.before_state["department"], "PLUMBING")
+            self.assertEqual(history.after_state["department"], "SECURITY")
+            self.assertEqual(audit.details, {"from": "PLUMBING", "to": "SECURITY"})
+
+    def test_admin_can_delete_complaint_and_related_records(self):
+        self.create_test_account({
+            "full_name": "Test Admin",
+            "email": "admin@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        with self.app.app_context():
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
+            admin.role = Role.query.filter_by(name="ADMIN").one()
+            complaint = Complaint(
+                reporter_id=admin.id,
+                title="Complaint to delete",
+                description="This complaint and its dependent data are removed.",
+                priority="LOW",
+                status="SUBMITTED",
+                submission_mode="WEB",
+            )
+            db.session.add(complaint)
+            db.session.flush()
+            complaint_id = complaint.id
+            history = ComplaintHistory(
+                complaint_id=complaint_id,
+                actor_id=admin.id,
+                action="SUBMITTED",
+                after_state={"status": "SUBMITTED"},
+            )
+            db.session.add(history)
+            db.session.flush()
+            db.session.add(RollbackRecord(
+                status="COMPLETED",
+                reversed_history_id=history.id,
+                rollback_history_id=history.id,
+            ))
+            db.session.add(ComplaintEmbedding(
+                complaint_id=complaint_id,
+                embedding=[0.0] * 384,
+            ))
+            db.session.add(Feedback(
+                complaint_id=complaint_id,
+                user_id=admin.id,
+                rating=5,
+            ))
+            db.session.commit()
+
+        response = self.client.delete(f"/api/v1/admin/complaints/{complaint_id}")
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(Complaint, complaint_id))
+            self.assertEqual(ComplaintHistory.query.filter_by(complaint_id=complaint_id).count(), 0)
+            self.assertEqual(ComplaintEmbedding.query.filter_by(complaint_id=complaint_id).count(), 0)
+            self.assertEqual(Feedback.query.filter_by(complaint_id=complaint_id).count(), 0)
+            rollback_record = RollbackRecord.query.one()
+            self.assertIsNone(rollback_record.reversed_history_id)
+            self.assertIsNone(rollback_record.rollback_history_id)
+            self.assertEqual(
+                AuditLog.query.filter_by(
+                    action="COMPLAINT_DELETED",
+                    resource_id=complaint_id,
+                ).count(),
+                1,
+            )
+
+    def test_complaint_rollback_records_before_and_after_activity_ids(self):
+        self.create_test_account({
+            "full_name": "Test Admin",
+            "email": "admin@vitstudent.ac.in",
+            "password": "A-strong-demo-password",
+            "portal": "student",
+        })
+        with self.app.app_context():
+            admin = User.query.filter_by(email="admin@vitstudent.ac.in").one()
+            admin.role = Role.query.filter_by(name="ADMIN").one()
+            plumbing = Department.query.filter_by(name="PLUMBING").one()
+            complaint = Complaint(
+                reporter_id=admin.id,
+                title="Rollback activity test",
+                description="A complaint used to validate reversible activity IDs.",
+                department_record=plumbing,
+                priority="HIGH",
+                status="IN_PROGRESS",
+                submission_mode="WEB",
+            )
+            db.session.add(complaint)
+            db.session.flush()
+            activity = ComplaintHistory(
+                complaint_id=complaint.id,
+                actor_id=admin.id,
+                action="IN_PROGRESS",
+                before_state={
+                    "status": "ASSIGNED",
+                    "department": "PLUMBING",
+                    "category_id": None,
+                    "priority": "MEDIUM",
+                },
+                after_state={
+                    "status": "IN_PROGRESS",
+                    "department": "PLUMBING",
+                    "category_id": None,
+                    "priority": "HIGH",
+                },
+            )
+            db.session.add(activity)
+            db.session.commit()
+            complaint_id = complaint.id
+            activity_id = activity.id
+
+        response = self.client.post(
+            f"/api/v1/admin/complaints/{complaint_id}/rollback",
+            json={"history_id": activity_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        rollback_activity_id = response.json["rollback_activity_id"]
+        self.assertEqual(response.json["reversed_activity_id"], activity_id)
+        with self.app.app_context():
+            record = RollbackRecord.query.one()
+            self.assertEqual(record.reversed_history_id, activity_id)
+            self.assertEqual(record.rollback_history_id, rollback_activity_id)
+            rollback_audit = AuditLog.query.filter_by(
+                action="COMPLAINT_ROLLED_BACK",
+                resource_id=complaint_id,
+            ).one()
+            self.assertEqual(rollback_audit.details["reversed_history_id"], activity_id)
+            self.assertEqual(rollback_audit.details["rollback_history_id"], rollback_activity_id)
 
 
 if __name__ == "__main__":

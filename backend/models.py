@@ -359,6 +359,14 @@ class RollbackRecord(db.Model):
     id = db.Column("rollback_id", db.Integer, primary_key=True)
     backup_id = db.Column(db.Integer, db.ForeignKey("backup_records.backup_id", ondelete="SET NULL"))
     actor_id = db.Column("initiated_by", db.Integer, db.ForeignKey("users.user_id", ondelete="SET NULL"))
+    reversed_history_id = db.Column(
+        db.Integer,
+        db.ForeignKey("complaint_history.history_id", ondelete="SET NULL"),
+    )
+    rollback_history_id = db.Column(
+        db.Integer,
+        db.ForeignKey("complaint_history.history_id", ondelete="SET NULL"),
+    )
     status = db.Column(db.String(20))
     reason = db.Column(db.Text)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)

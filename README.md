@@ -1,6 +1,6 @@
 # CampusCare — Smart Complaint Routing
 
-CampusCare is a full-stack campus complaint application with email/password and optional Google sign-in, role-based access, AI-assisted department/category/priority suggestions, pgvector retrieval, complaint tracking, and audit history.
+CampusCare is a full-stack campus complaint application with Google-only sign-in for Users and department staff, password-only Admin sign-in, role-based access, AI-assisted department/category/priority suggestions, pgvector retrieval, complaint tracking, and audit history.
 
 ## Stack and structure
 
@@ -21,7 +21,7 @@ frontend/                React/Vite interface and Nginx configuration
 docker-compose.yml       Local PostgreSQL, API, frontend, optional ingestion jobs
 ```
 
-The complaint statuses are `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, and `REJECTED`. Resolution details are stored in `complaint_history`; there is no separate resolutions table. Historical complaint and knowledge embeddings use 384-dimensional cosine vectors.
+The application roles are `USER`, `OFFICER`, and `ADMIN`; `STUDENT`, `FACULTY`, and `WORKING_STAFF` remain account-type values. The complaint statuses are `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, and `REJECTED`. Resolution details are stored in `complaint_history`; there is no separate resolutions table. Historical complaint and knowledge embeddings use 384-dimensional cosine vectors. See [the database table reference](./docs/database/table_reference.md) for all tables and their primary/foreign keys.
 
 ## Run locally with Docker Desktop
 
@@ -62,6 +62,7 @@ On a new, empty `postgres_data` volume, Docker initializes the database in this 
 1. `database/schema/00_init.sql` — canonical schema and pgvector indexes
 2. `database/seeds/01_init_data.sql` — starter roles, permissions, departments, and categories
 3. `database/migrations/001_auth_password_and_feedback.sql` — idempotent application compatibility migration
+4. `database/migrations/003_user_role_and_rollback_activity.sql` — role rename and rollback activity references
 
 Do not run the other files under `database/schema/`; they are overlapping, older schema fragments. PostgreSQL runs initialization files only when its data directory is empty. If you already have a volume, do **not** delete it to fix startup problems. Apply the migration explicitly and inspect the existing schema first:
 
@@ -84,15 +85,17 @@ docker compose exec postgres psql -U postgres -d complaint_routing -c "SELECT in
 
 Expected results include API status `ok`, extension `vector`, all 15 canonical tables, and HNSW indexes using `vector_cosine_ops`. The API checks required columns, the two `vector(384)` columns, vector indexes, and reference data during startup; a schema mismatch stops startup with a specific error.
 
+To browse the local tables and inspect their keys, run `docker compose exec postgres psql -U postgres -d complaint_routing`, then use `\dt`, `\d+ complaints`, or `\d+ rollback_records`. Run `SELECT` queries in that same `psql` prompt to inspect rows. A rebuilt API applies forward migrations to an existing local database at startup.
+
 ### 5. Create the first administrator
 
-Register a normal account in the UI, then bootstrap that account as the initial administrator:
+Sign in or create a User account with Google, then bootstrap that account as the initial administrator:
 
 ```powershell
 docker compose exec api python -m backend.seed_admin
 ```
 
-Enter the email used during registration and a strong password. Sign out and sign back in to refresh the account's role. Administrators can promote users to department officers from **People & access**.
+Enter that Google account's email and choose a strong administrator password. Sign out and sign back in through the Admin portal. Administrators can promote users to department officers from **People & access**.
 
 ### 6. Load sample RAG data (optional but recommended)
 
@@ -152,7 +155,7 @@ npm run dev
 
 The Vite dev server uses `frontend/.env.example`'s local API URL. For Google sign-in, set `FRONTEND_URL=http://localhost:5173` in the root `.env` and use `GOOGLE_REDIRECT_URI=http://localhost:5000/api/v1/auth/google/callback`. The same callback works in Docker because the API is exposed on port 5000. This URI must exactly match an authorized redirect URI in Google Cloud. The Docker stack builds the frontend and API as separate services; Nginx serves the frontend and proxies `/api/` requests to Flask.
 
-The first screen offers Student, Admin, and Department portals. Department users can create an account request, but it remains a Citizen account until an administrator assigns the Officer role and selected department in **People & access**. Admin access must be provisioned by an administrator. Department staff select their department at sign-in, and the API checks it against the account's assigned department. The admin table shows the effective portal type (Student, Department, or Admin); department requests are marked pending until approved. Complaints are routed to the AI-selected or explicitly selected department and appear in that department's queue, regardless of whether a student or admin submitted them. Admin account deletion anonymizes and disables the account while preserving complaint and audit history. The latest role/department or active-state change can be rolled back from **People & access** or **System activity**. Earlier changes can only be undone after newer changes are rolled back; anonymized deletions are not reversible. Complaint lists, dashboard summaries, and admin data refresh after changes, when the window regains focus, and every 30 seconds while open.
+The first screen offers User, Admin, and Department portals. User and department accounts require verified Google sign-in with VIT email addresses matching a `vit…ac.in` domain; password registration and login are disabled for those portals. Administrators sign in with email and password only. Department sign-ups made with Google remain pending User accounts until an administrator approves them as an Officer and assigns the requested department in **People & access**. Complaints require the reporter to choose a department; AI suggests a category and priority for review. Admins can change a complaint's department regardless of status and permanently delete complaints; deletion also removes the complaint's history, feedback, and embedding while retaining the audit event. Complaint rollback records store the reversed activity ID and the new rollback activity ID. User access changes can be rolled back from **People & access** or **System activity**. Earlier changes can only be undone after newer changes are rolled back; anonymized account deletions are not reversible. Complaint lists, dashboard summaries, and admin data refresh after changes, when the window regains focus, and every 30 seconds while open.
 
 ## Troubleshooting
 

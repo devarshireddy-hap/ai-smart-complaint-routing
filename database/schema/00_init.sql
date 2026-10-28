@@ -238,6 +238,8 @@ CREATE TABLE IF NOT EXISTS rollback_records (
     rollback_id SERIAL PRIMARY KEY,
     backup_id INTEGER REFERENCES backup_records(backup_id) ON DELETE SET NULL,
     initiated_by INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
+    reversed_history_id INTEGER REFERENCES complaint_history(history_id) ON DELETE SET NULL,
+    rollback_history_id INTEGER REFERENCES complaint_history(history_id) ON DELETE SET NULL,
     status VARCHAR(20), -- PENDING, IN_PROGRESS, COMPLETED, FAILED
     reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

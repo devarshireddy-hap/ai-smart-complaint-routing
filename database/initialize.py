@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = PROJECT_ROOT / "database" / "schema" / "00_init.sql"
 SEED_PATH = PROJECT_ROOT / "database" / "seeds" / "01_init_data.sql"
 MIGRATION_PATH = PROJECT_ROOT / "database" / "migrations" / "001_auth_password_and_feedback.sql"
+USER_ROLE_MIGRATION_PATH = PROJECT_ROOT / "database" / "migrations" / "003_user_role_and_rollback_activity.sql"
 REQUIRED_TABLES = {
     "users",
     "roles",
@@ -64,6 +65,7 @@ def initialize_database() -> None:
 
             cursor.execute(SEED_PATH.read_text(encoding="utf-8"))
             cursor.execute(MIGRATION_PATH.read_text(encoding="utf-8"))
+            cursor.execute(USER_ROLE_MIGRATION_PATH.read_text(encoding="utf-8"))
         connection.commit()
 
     print("Reference seed data is ready.")
