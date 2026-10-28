@@ -17,36 +17,6 @@ const STATUS_LABELS = {
   RESOLVED: "Resolved", REJECTED: "Rejected",
 };
 
-const reassignDepartment = async (complaintId, department) => {
-  setBusy(true);
-  try {
-    const result = await api(`/admin/complaints/${complaintId}/department`, {
-      method: "PATCH",
-      body: JSON.stringify({ department }),
-    });
-    setSelected(result.complaint);
-    setNotice(`${result.complaint.reference} moved to ${department.toLowerCase()}.`);
-    await refresh();
-    await refreshSelected();
-  } catch (requestError) {
-    setError(requestError.message);
-  } finally {
-    setBusy(false);
-  }
-};
-
-const deleteComplaint = async (complaint) => {
-  if (!window.confirm(`Permanently delete ${complaint.reference}? Its complaint history, feedback, and embedding will also be deleted. This cannot be undone.`)) return;
-  try {
-    await api(`/admin/complaints/${complaint.id}`, { method: "DELETE" });
-    setSelected(null);
-    setNotice(`${complaint.reference} was deleted.`);
-    await refresh();
-  } catch (requestError) {
-    setError(requestError.message);
-  }
-};
-
 function csrfToken() {
   const match = document.cookie.match(/(?:^|; )csrf_access_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : "";
@@ -179,13 +149,16 @@ function AuthScreen({ onSignedIn, initialError }) {
           <p className="auth-subtitle">{portal === "admin" ? "Sign in to manage campus access and routing." : portal === "department" && mode === "register" ? "Use your verified VIT Google account. An administrator must approve your request." : portal === "department" ? "Sign in with the Google account approved for your department." : "Use your verified VIT Google account to sign in or create your account."}</p>
           {message && <div className="success-banner">{message}</div>}
           {error && <div className="error-banner">{error}</div>}
-          {portal === "admin" ? <form className="auth-form" onSubmit={submit}>
-            <label>Email address<input name="email" type="email" value={form.email} onChange={update} autoComplete="username" placeholder="Admin email" required /></label>
-            <label>Password<input name="password" type="password" value={form.password} onChange={update} autoComplete="current-password" placeholder="Enter your password" required /></label>
-            <button className="button button-primary auth-submit" disabled={busy}>{busy ? "Please wait…" : "Sign in"} <ArrowRight size={16} /></button>
-          </form> : <>
+          {portal === "admin" ? <>
+            {googleEnabled && <><a className="button button-google" href={`${API_BASE}/auth/google?${new URLSearchParams({ portal })}`}><span className="google-g">G</span> Continue with Google</a><div className="auth-divider"><span>or use password</span></div></>}
+            <form className="auth-form" onSubmit={submit}>
+              <label>Email address<input name="email" type="email" value={form.email} onChange={update} autoComplete="username" placeholder="Admin email" required /></label>
+              <label>Password<input name="password" type="password" value={form.password} onChange={update} autoComplete="current-password" placeholder="Enter your password" required /></label>
+              <button className="button button-primary auth-submit" disabled={busy}>{busy ? "Please wait…" : "Sign in"} <ArrowRight size={16} /></button>
+            </form>
+          </> : <>
             {portal === "department" && <label>Department<select value={department} onChange={(event) => setDepartment(event.target.value)} required><option value="">Choose your department</option>{DEPARTMENTS.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select></label>}
-            <small className="field-hint">Use a VIT Google account whose email domain starts with “vit” and ends in “.ac.in”.</small>
+            {(portal === "student" || portal === "department") && <small className="field-hint">Use a VIT Google account whose email domain starts with “vit” and ends in “.ac.in”.</small>}
             {googleEnabled && (portal !== "department" || department) && <a className="button button-google" href={`${API_BASE}/auth/google?${new URLSearchParams({ portal, ...(portal === "department" ? { department } : {}), ...(mode === "register" ? { mode } : {}) })}`}><span className="google-g">G</span> Continue with Google</a>}
           </>}
           {portal === "student" || portal === "department" ? <p className="auth-switch">{mode === "login" ? "New to CampusCare?" : "Already have an account?"} <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setMessage(""); }}>{mode === "login" ? "Create an account" : "Sign in"}</button></p> : <p className="auth-switch">Portal access is assigned by a CampusCare administrator.</p>}
@@ -316,6 +289,39 @@ function App() {
       setHistory(timeline.history);
     } catch (requestError) {
       setError(requestError.message);
+    }
+  };
+
+  const reassignDepartment = async (complaintId, department) => {
+    setBusy(true);
+    try {
+      const result = await api(`/admin/complaints/${complaintId}/department`, {
+        method: "PATCH",
+        body: JSON.stringify({ department }),
+      });
+      setSelected(result.complaint);
+      setNotice(`${result.complaint.reference} moved to ${department.toLowerCase()}.`);
+      await refresh();
+      await refreshSelected();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteComplaint = async (complaint) => {
+    if (!window.confirm(`Permanently delete ${complaint.reference}? Its complaint history, feedback, and embedding will also be deleted. This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await api(`/admin/complaints/${complaint.id}`, { method: "DELETE" });
+      setSelected(null);
+      setNotice(`${complaint.reference} was deleted.`);
+      await refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
     }
   };
 

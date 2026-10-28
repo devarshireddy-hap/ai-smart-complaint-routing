@@ -629,8 +629,6 @@ def create_app(test_config=None):
         if portal is not None:
             if portal not in {"student", "admin", "department"}:
                 abort(400, description="Choose a valid portal.")
-            if portal == "admin":
-                abort(403, description="Administrator sign-in uses email and password.")
             department = request.args.get("department", "").upper()
             if portal == "department" and department not in DEPARTMENT_INFO:
                 abort(400, description="Choose a valid department.")
@@ -664,8 +662,9 @@ def create_app(test_config=None):
 
         if not subject or not email or not profile.get("email_verified"):
             abort(401, description="Google did not return a verified email address.")
-        if not _is_vit_email(email):
-            abort(403, description="Use a verified VIT Google account with an .ac.in email address.")
+        if not portal_intent or portal_intent["portal"] != "admin":
+            if not _is_vit_email(email):
+                abort(403, description="Use a verified VIT Google account with an .ac.in email address.")
 
         # Find an account already linked to this Google identity.
         user = User.query.filter_by(google_subject=subject).first()
@@ -709,9 +708,6 @@ def create_app(test_config=None):
             if not user.is_active:
                 db.session.rollback()
                 abort(403, description="This account is disabled.")
-
-            if user.role and user.role.name == "ADMIN":
-                abort(403, description="Administrator sign-in uses email and password.")
 
             if portal_intent:
                 expected_roles = {"student": "USER", "admin": "ADMIN", "department": "OFFICER"}

@@ -334,8 +334,8 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
 
         client = app.test_client()
         try:
-            denied_admin_sso = client.get("/api/v1/auth/google?portal=admin")
-            self.assertEqual(denied_admin_sso.status_code, 403)
+            admin_sso = client.get("/api/v1/auth/google?portal=admin")
+            self.assertIn(admin_sso.status_code, {302, 303})
             client.get("/api/v1/auth/google?portal=department&department=FINANCE&mode=register")
             response = client.get("/api/v1/auth/google/callback")
             self.assertEqual(response.status_code, 302)
