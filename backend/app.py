@@ -544,7 +544,7 @@ def create_app(test_config=None):
         app,
         supports_credentials=True,
         origins=cors_origins,
-        allow_headers=["Content-Type", "X-CSRF-TOKEN"],
+        allow_headers=["Content-Type", "X-CSRF-TOKEN", "Authorization"],
     )
     app.register_error_handler(400, _error_response)
     app.register_error_handler(401, _error_response)

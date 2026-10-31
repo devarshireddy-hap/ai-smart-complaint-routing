@@ -312,6 +312,27 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
                 db.session.remove()
                 db.drop_all()
 
+    def test_authorization_header_is_allowed_for_cross_origin_requests(self):
+        app = create_app({
+            "TESTING": True,
+            "APP_ENV": "test",
+            "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            "JWT_COOKIE_CSRF_PROTECT": False,
+            "FRONTEND_URL": "http://localhost:3000",
+            "CORS_ORIGINS": "http://localhost:3000",
+        })
+        client = app.test_client()
+        response = client.options(
+            "/api/v1/auth/me",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "Authorization, Content-Type",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Authorization", response.headers.get("Access-Control-Allow-Headers", ""))
+
     def test_google_department_registration_creates_a_pending_access_request(self):
         oauth = Mock()
         oauth.google.authorize_redirect.return_value = redirect("https://accounts.google.com/")
