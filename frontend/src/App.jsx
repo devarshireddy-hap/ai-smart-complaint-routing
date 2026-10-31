@@ -17,6 +17,14 @@ const STATUS_LABELS = {
   RESOLVED: "Resolved", REJECTED: "Rejected",
 };
 
+function googleAccessToken() {
+  if (!window.location.hash.startsWith("#access_token=")) return sessionStorage.getItem("campuscare_access_token") || "";
+  const token = new URLSearchParams(window.location.hash.slice(1)).get("access_token") || "";
+  if (token) sessionStorage.setItem("campuscare_access_token", token);
+  window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+  return token;
+}
+
 function csrfToken() {
   const match = document.cookie.match(/(?:^|; )csrf_access_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : "";
@@ -24,7 +32,12 @@ function csrfToken() {
 
 async function api(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
-  const headers = { ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
+  const accessToken = googleAccessToken();
+  const headers = {
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...(options.headers || {}),
+  };
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-TOKEN"] = csrfToken();
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,

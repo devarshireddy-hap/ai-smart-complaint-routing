@@ -495,7 +495,8 @@ def create_app(test_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         APP_ENV=os.getenv("APP_ENV", "development").lower(),
         JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY", secret_key or "development-only-change-this-jwt-secret"),
-        JWT_TOKEN_LOCATION=["cookies"],
+        JWT_TOKEN_LOCATION=["headers", "cookies"],
+        JWT_HEADER_TYPE="Bearer", 
         JWT_ACCESS_COOKIE_NAME="access_token_cookie",
         JWT_ACCESS_COOKIE_PATH="/api/",
         JWT_COOKIE_CSRF_PROTECT=True,
@@ -756,13 +757,13 @@ def create_app(test_config=None):
             and user.role.name == "USER"
             and user.user_type == "WORKING_STAFF"
         )
-        response = redirect(
-            f"{app.config['FRONTEND_URL']}/?department_request=pending"
-            if department_request_pending
-            else app.config["FRONTEND_URL"]
-        )
-        if not department_request_pending:
-            set_access_cookies(response, create_access_token(identity=str(user.id)))
+        access_token = create_access_token(identity=str(user.id))
+        frontend_url = app.config["FRONTEND_URL"]
+        if department_request_pending:
+            response = redirect(f"{frontend_url}/?department_request=pending")
+        else:
+            response = redirect(f"{frontend_url}/#access_token={access_token}")
+            set_access_cookies(response, access_token)
         return response
 
     @app.post("/api/v1/ai/analyze")

@@ -31,7 +31,7 @@ services:
       - key: COOKIE_SECURE
         value: "true"
       - key: JWT_COOKIE_SAMESITE
-        value: Lax
+        value: "None"
       - key: FRONTEND_URL
         fromService:
           type: web

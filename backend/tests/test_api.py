@@ -306,7 +306,7 @@ class AuthenticationAuthorizationTests(unittest.TestCase):
             client.get("/api/v1/auth/google?portal=department&department=PLUMBING")
             accepted = client.get("/api/v1/auth/google/callback")
             self.assertEqual(accepted.status_code, 302)
-            self.assertEqual(accepted.headers["Location"], "http://localhost:3000")
+            self.assertTrue(accepted.headers["Location"].startswith("http://localhost:3000/#access_token="))
         finally:
             with app.app_context():
                 db.session.remove()
