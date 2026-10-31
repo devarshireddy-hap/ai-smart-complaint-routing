@@ -10,7 +10,7 @@ services:
   - type: web
     name: campuscare-api
     runtime: docker
-    branch: full-stack
+    branch: fullstack-2.0
     plan: free
     region: oregon
     dockerfilePath: ./backend/Dockerfile
@@ -50,7 +50,7 @@ services:
   - type: web
     name: campuscare-frontend
     runtime: static
-    branch: full-stack
+    branch: fullstack-2.0
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
